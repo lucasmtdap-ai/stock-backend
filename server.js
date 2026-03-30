@@ -9,9 +9,9 @@ app.use(express.json());
 
 // conexão com banco
 const pool = new Pool({
-  connectionstring: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectunauthorized: false,
+    rejectUnauthorized: false,
   },
 });
 
