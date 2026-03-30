@@ -7,6 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// conexão com banco
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -14,63 +15,37 @@ const pool = new Pool({
   },
 });
 
-async function iniciarBanco() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS produtos (
-        id SERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        preco NUMERIC(10,2) NOT NULL
-      )
-    `);
-    console.log("Banco conectado e tabela produtos pronta.");
-  } catch (erro) {
-    console.error("Erro ao iniciar banco:", erro);
-  }
+// criar tabela automaticamente
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS produtos (
+      id SERIAL PRIMARY KEY,
+      nome TEXT,
+      preco NUMERIC
+    )
+  `);
 }
 
-app.get("/", (req, res) => {
-  res.send("API rodando com banco 🚀");
-});
+initDB();
 
+// GET
 app.get("/produtos", async (req, res) => {
-  try {
-    const resultado = await pool.query(
-      "SELECT * FROM produtos ORDER BY id DESC"
-    );
-    res.json(resultado.rows);
-  } catch (erro) {
-    console.error("Erro ao buscar produtos:", erro);
-    res.status(500).json({ erro: "Erro ao buscar produtos" });
-  }
+  const result = await pool.query("SELECT * FROM produtos");
+  res.json(result.rows);
 });
 
+// POST
 app.post("/produtos", async (req, res) => {
-  try {
-    const { nome, preco } = req.body;
+  const { nome, preco } = req.body;
 
-    if (!nome || preco === undefined) {
-      return res.status(400).json({ erro: "Nome e preço são obrigatórios" });
-    }
+  await pool.query(
+    "INSERT INTO produtos (nome, preco) VALUES ($1, $2)",
+    [nome, preco]
+  );
 
-    const resultado = await pool.query(
-      "INSERT INTO produtos (nome, preco) VALUES ($1, $2) RETURNING *",
-      [nome, preco]
-    );
-
-    res.json({
-      mensagem: "Produto salvo com sucesso",
-      produto: resultado.rows[0],
-    });
-  } catch (erro) {
-    console.error("Erro ao salvar produto:", erro);
-    res.status(500).json({ erro: "Erro ao salvar produto" });
-  }
+  res.json({ mensagem: "Produto salvo no banco!" });
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, async () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  await iniciarBanco();
+app.listen(3000, () => {
+  console.log("Servidor rodando 🚀");
 });
