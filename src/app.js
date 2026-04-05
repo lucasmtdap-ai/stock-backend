@@ -1,15 +1,35 @@
 import express from "express";
 import cors from "cors";
-
+import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
+import { initDb } from "./utils/initDb.js";
+
+dotenv.config();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    app: "Rosa Boutique Backend",
+    status: "online"
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    status: "running"
+  });
+});
+
 app.use("/auth", authRoutes);
 app.use("/produtos", productRoutes);
+
+await initDb();
 
 export default app;
