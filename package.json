@@ -1,6 +1,7 @@
 {
-  "name": "stock-saas",
-  "version": "2.0.0",
+  "name": "rosa-boutique-backend",
+  "version": "1.0.0",
+  "description": "Backend SaaS da Rosa Boutique",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
