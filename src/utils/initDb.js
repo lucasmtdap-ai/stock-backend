@@ -1,37 +1,31 @@
-import pkg from "pg";
-const { Pool } = pkg;
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
-});
+import { pool } from "../config/db.js";
 
 export async function initDb() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        email TEXT UNIQUE,
-        password TEXT,
-        store_id TEXT
-      );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lojas (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL
+    );
+  `);
 
-      CREATE TABLE IF NOT EXISTS products (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        price NUMERIC,
-        stock INTEGER,
-        store_id TEXT
-      );
-    `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      senha TEXT NOT NULL,
+      loja_id INTEGER REFERENCES lojas(id)
+    );
+  `);
 
-    console.log("✅ Banco inicializado");
-  } catch (error) {
-    console.error("❌ Erro ao iniciar DB:", error);
-  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS produtos (
+      id SERIAL PRIMARY KEY,
+      nome TEXT,
+      preco NUMERIC,
+      quantidade INTEGER,
+      loja_id INTEGER REFERENCES lojas(id)
+    );
+  `);
+
+  console.log("Banco pronto 🚀");
 }
-
-export default pool;
