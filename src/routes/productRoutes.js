@@ -22,9 +22,9 @@ router.post("/", async (req, res) => {
     const { nome, preco } = req.body;
 
     const result = await pool.query(
-      "INSERT INTO produtos (nome, preco, categoria, estoque) VALUES ($1, $2, $3, $4) RETURNING *",
-      [nome, preco, categoria, estoque]
-    );
+  "INSERT INTO produtos (nome, preco) VALUES ($1, $2)",
+  [nome, preco]
+);
 
     res.json(result.rows[0]);
   } catch (err) {
