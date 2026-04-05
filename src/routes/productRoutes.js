@@ -1,29 +1,27 @@
-import express from "express";
-import { pool } from "../config/db.js";
-import auth from "../middlewares/auth.js";
-
-const router = express.Router();
-
-// LISTAR PRODUTOS DA LOJA
-router.get("/", auth, async (req, res) => {
-  const result = await pool.query(
-    "SELECT * FROM produtos WHERE loja_id = $1",
-    [req.user.loja_id]
-  );
-
-  res.json(result.rows);
+// LISTAR PRODUTOS
+router.get("/", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM produtos");
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao buscar produtos" });
+  }
 });
 
 // CRIAR PRODUTO
-router.post("/", auth, async (req, res) => {
-  const { nome, preco, quantidade } = req.body;
+router.post("/", async (req, res) => {
+  try {
+    const { nome, preco, quantidade } = req.body;
 
-  const result = await pool.query(
-    "INSERT INTO produtos(nome, preco, quantidade, loja_id) VALUES($1,$2,$3,$4) RETURNING *",
-    [nome, preco, quantidade, req.user.loja_id]
-  );
+    const result = await pool.query(
+      "INSERT INTO produtos(nome, preco, quantidade) VALUES($1,$2,$3) RETURNING *",
+      [nome, preco, quantidade]
+    );
 
-  res.json(result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao cadastrar produto" });
+  }
 });
-
-export default router;
