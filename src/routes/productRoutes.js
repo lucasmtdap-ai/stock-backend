@@ -7,7 +7,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM produtos ORDER BY id DESC"
+      "SELECT id, nome, preco FROM produtos ORDER BY id DESC"
     );
     res.json(result.rows);
   } catch (err) {
@@ -16,17 +16,21 @@ router.get("/", async (req, res) => {
   }
 });
 
-// CRIAR PRODUTO
+// CADASTRAR PRODUTO
 router.post("/", async (req, res) => {
   try {
-    const { nome, preco, categoria, estoque } = req.body;
+    const { nome, preco } = req.body;
+
+    if (!nome || preco === undefined || preco === null || preco === "") {
+      return res.status(400).json({ error: "Nome e preço são obrigatórios" });
+    }
 
     const result = await pool.query(
-      "INSERT INTO produtos (nome, preco, categoria, estoque) VALUES ($1, $2, $3, $4) RETURNING *",
-      [nome, preco || 0, categoria || null, estoque || 0]
+      "INSERT INTO produtos (nome, preco) VALUES ($1, $2) RETURNING id, nome, preco",
+      [nome, Number(preco)]
     );
 
-    res.json(result.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Erro ao cadastrar produto:", err);
     res.status(500).json({ error: "Erro ao cadastrar produto" });
@@ -37,17 +41,15 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, preco, categoria, estoque } = req.body;
+    const { nome, preco } = req.body;
+
+    if (!nome || preco === undefined || preco === null || preco === "") {
+      return res.status(400).json({ error: "Nome e preço são obrigatórios" });
+    }
 
     const result = await pool.query(
-      "UPDATE produtos SET nome = $1, preco = $2, categoria = $3, estoque = $4 WHERE id = $5 RETURNING *",
-      [
-        nome,
-        Number(preco || 0),
-        categoria || null,
-        Number(estoque || 0),
-        Number(id)
-      ]
+      "UPDATE produtos SET nome = $1, preco = $2 WHERE id = $3 RETURNING id, nome, preco",
+      [nome, Number(preco), Number(id)]
     );
 
     if (result.rows.length === 0) {
@@ -67,8 +69,8 @@ router.delete("/:id", async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      "DELETE FROM produtos WHERE id = $1 RETURNING *",
-      [id]
+      "DELETE FROM produtos WHERE id = $1 RETURNING id",
+      [Number(id)]
     );
 
     if (result.rows.length === 0) {
