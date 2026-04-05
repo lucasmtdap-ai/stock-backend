@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, "db.json");
-const SECRET = "rosa-saas-secret";
+const SECRET = process.env.JWT_SECRET || "rosa-boutique-secret-key";
 
 app.use(cors());
 app.use(express.json());
@@ -32,17 +32,31 @@ function saveDB(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
-function gerarId() {
+function generateId() {
   return Date.now().toString() + Math.floor(Math.random() * 1000).toString();
 }
 
-// middleware de auth para usar depois, se quiser proteger rotas
-function auth(req, res, next) {
-  const token = req.headers.authorization?.split(" ")[1];
+function sanitizeUser(user) {
+  return {
+    id: user.id,
+    nome: user.nome,
+    email: user.email
+  };
+}
 
-  if (!token) {
+function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
     return res.status(401).json({ error: "Sem token" });
   }
+
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2 || parts[0] !== "Bearer") {
+    return res.status(401).json({ error: "Token mal formatado" });
+  }
+
+  const token = parts[1];
 
   try {
     const decoded = jwt.verify(token, SECRET);
@@ -53,25 +67,20 @@ function auth(req, res, next) {
   }
 }
 
-// rota raiz
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    message: "Backend StockPro online"
+    app: "Rosa Boutique Backend",
+    status: "online"
   });
 });
 
-// health check
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
     status: "running"
   });
 });
-
-// =========================
-// AUTH
-// =========================
 
 app.post("/register", (req, res) => {
   try {
@@ -84,24 +93,22 @@ app.post("/register", (req, res) => {
       });
     }
 
-    if (db.users.length >= 2) {
-      return res.status(403).json({
-        error: "Limite de usuários atingido"
-      });
-    }
+    const normalizedEmail = String(email).trim().toLowerCase();
 
-    const jaExiste = db.users.find((u) => u.email === email);
+    const existingUser = db.users.find(
+      (u) => u.email.toLowerCase() === normalizedEmail
+    );
 
-    if (jaExiste) {
+    if (existingUser) {
       return res.status(400).json({
-        error: "Email já existe"
+        error: "Este email já está cadastrado"
       });
     }
 
     const user = {
-      id: gerarId(),
+      id: generateId(),
       nome: String(nome).trim(),
-      email: String(email).trim(),
+      email: normalizedEmail,
       senha: String(senha)
     };
 
@@ -118,17 +125,16 @@ app.post("/register", (req, res) => {
       { expiresIn: "7d" }
     );
 
-    return res.json({
+    return res.status(201).json({
+      message: "Usuário criado com sucesso",
       token,
-      user: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
-    console.error("Erro no /register:", error);
-    return res.status(500).json({ error: "Erro interno no servidor" });
+    console.error("Erro em /register:", error);
+    return res.status(500).json({
+      error: "Erro interno no servidor"
+    });
   }
 });
 
@@ -137,13 +143,21 @@ app.post("/login", (req, res) => {
     const { email, senha } = req.body;
     const db = readDB();
 
+    if (!email || !senha) {
+      return res.status(400).json({
+        error: "Email e senha são obrigatórios"
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     const user = db.users.find(
-      (u) => u.email === email && u.senha === senha
+      (u) => u.email.toLowerCase() === normalizedEmail && u.senha === String(senha)
     );
 
     if (!user) {
       return res.status(401).json({
-        error: "Login inválido"
+        error: "Email ou senha inválidos"
       });
     }
 
@@ -158,54 +172,81 @@ app.post("/login", (req, res) => {
     );
 
     return res.json({
+      message: "Login realizado com sucesso",
       token,
-      user: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email
-      }
+      user: sanitizeUser(user)
     });
   } catch (error) {
-    console.error("Erro no /login:", error);
-    return res.status(500).json({ error: "Erro interno no servidor" });
+    console.error("Erro em /login:", error);
+    return res.status(500).json({
+      error: "Erro interno no servidor"
+    });
   }
 });
 
-// =========================
-// PRODUTOS
-// COMPATÍVEL COM O FRONTEND ATUAL
-// =========================
-
-// listar produtos
-app.get("/produtos", (req, res) => {
+app.get("/me", auth, (req, res) => {
   try {
     const db = readDB();
-    return res.json(db.products);
+    const user = db.users.find((u) => u.id === req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        error: "Usuário não encontrado"
+      });
+    }
+
+    return res.json({
+      user: sanitizeUser(user)
+    });
   } catch (error) {
-    console.error("Erro no GET /produtos:", error);
-    return res.status(500).json({ error: "Erro ao buscar produtos" });
+    console.error("Erro em /me:", error);
+    return res.status(500).json({
+      error: "Erro interno no servidor"
+    });
   }
 });
 
-// buscar produto por id
-app.get("/produtos/:id", (req, res) => {
+app.get("/produtos", auth, (req, res) => {
   try {
     const db = readDB();
-    const produto = db.products.find((p) => p.id === req.params.id);
+
+    const produtos = db.products.filter(
+      (p) => p.userId === req.user.id
+    );
+
+    return res.json(produtos);
+  } catch (error) {
+    console.error("Erro em GET /produtos:", error);
+    return res.status(500).json({
+      error: "Erro ao buscar produtos"
+    });
+  }
+});
+
+app.get("/produtos/:id", auth, (req, res) => {
+  try {
+    const db = readDB();
+
+    const produto = db.products.find(
+      (p) => p.id === req.params.id && p.userId === req.user.id
+    );
 
     if (!produto) {
-      return res.status(404).json({ error: "Produto não encontrado" });
+      return res.status(404).json({
+        error: "Produto não encontrado"
+      });
     }
 
     return res.json(produto);
   } catch (error) {
-    console.error("Erro no GET /produtos/:id:", error);
-    return res.status(500).json({ error: "Erro ao buscar produto" });
+    console.error("Erro em GET /produtos/:id:", error);
+    return res.status(500).json({
+      error: "Erro ao buscar produto"
+    });
   }
 });
 
-// criar produto
-app.post("/produtos", (req, res) => {
+app.post("/produtos", auth, (req, res) => {
   try {
     const db = readDB();
     const { nome, preco, categoria, estoque } = req.body;
@@ -216,41 +257,49 @@ app.post("/produtos", (req, res) => {
       });
     }
 
-    const novo = {
-      id: gerarId(),
-      nome: String(nome).trim(),
-      preco: Number(preco),
-      categoria: categoria ? String(categoria).trim() : "",
-      estoque: Number(estoque || 0)
-    };
+    const parsedPreco = Number(preco);
+    const parsedEstoque = Number(estoque || 0);
 
-    if (Number.isNaN(novo.preco)) {
+    if (Number.isNaN(parsedPreco)) {
       return res.status(400).json({
         error: "Preço inválido"
       });
     }
 
-    if (Number.isNaN(novo.estoque)) {
+    if (Number.isNaN(parsedEstoque)) {
       return res.status(400).json({
         error: "Estoque inválido"
       });
     }
 
-    db.products.push(novo);
+    const novoProduto = {
+      id: generateId(),
+      userId: req.user.id,
+      nome: String(nome).trim(),
+      preco: parsedPreco,
+      categoria: categoria ? String(categoria).trim() : "",
+      estoque: parsedEstoque,
+      createdAt: new Date().toISOString()
+    };
+
+    db.products.push(novoProduto);
     saveDB(db);
 
-    return res.status(201).json(novo);
+    return res.status(201).json(novoProduto);
   } catch (error) {
-    console.error("Erro no POST /produtos:", error);
-    return res.status(500).json({ error: "Erro ao criar produto" });
+    console.error("Erro em POST /produtos:", error);
+    return res.status(500).json({
+      error: "Erro ao criar produto"
+    });
   }
 });
 
-// editar produto
-app.put("/produtos/:id", (req, res) => {
+app.put("/produtos/:id", auth, (req, res) => {
   try {
     const db = readDB();
-    const index = db.products.findIndex((p) => p.id === req.params.id);
+    const index = db.products.findIndex(
+      (p) => p.id === req.params.id && p.userId === req.user.id
+    );
 
     if (index === -1) {
       return res.status(404).json({
@@ -261,7 +310,7 @@ app.put("/produtos/:id", (req, res) => {
     const atual = db.products[index];
     const body = req.body;
 
-    const atualizado = {
+    const updatedProduct = {
       ...atual,
       nome: body.nome !== undefined ? String(body.nome).trim() : atual.nome,
       preco: body.preco !== undefined ? Number(body.preco) : atual.preco,
@@ -272,50 +321,58 @@ app.put("/produtos/:id", (req, res) => {
       estoque:
         body.estoque !== undefined
           ? Number(body.estoque)
-          : atual.estoque
+          : atual.estoque,
+      updatedAt: new Date().toISOString()
     };
 
-    if (!atualizado.nome) {
+    if (!updatedProduct.nome) {
       return res.status(400).json({
         error: "Nome é obrigatório"
       });
     }
 
-    if (Number.isNaN(atualizado.preco)) {
+    if (Number.isNaN(updatedProduct.preco)) {
       return res.status(400).json({
         error: "Preço inválido"
       });
     }
 
-    if (Number.isNaN(atualizado.estoque)) {
+    if (Number.isNaN(updatedProduct.estoque)) {
       return res.status(400).json({
         error: "Estoque inválido"
       });
     }
 
-    db.products[index] = atualizado;
+    db.products[index] = updatedProduct;
     saveDB(db);
 
-    return res.json(atualizado);
+    return res.json(updatedProduct);
   } catch (error) {
-    console.error("Erro no PUT /produtos/:id:", error);
-    return res.status(500).json({ error: "Erro ao atualizar produto" });
+    console.error("Erro em PUT /produtos/:id:", error);
+    return res.status(500).json({
+      error: "Erro ao atualizar produto"
+    });
   }
 });
 
-// excluir produto
-app.delete("/produtos/:id", (req, res) => {
+app.delete("/produtos/:id", auth, (req, res) => {
   try {
     const db = readDB();
-    const existe = db.products.some((p) => p.id === req.params.id);
 
-    if (!existe) {
+    const exists = db.products.some(
+      (p) => p.id === req.params.id && p.userId === req.user.id
+    );
+
+    if (!exists) {
       return res.status(404).json({
         error: "Produto não encontrado"
       });
     }
 
-    db.products = db.products.filter((p) => p.id !== req.params.id);
+    db.products = db.products.filter(
+      (p) => !(p.id === req.params.id && p.userId === req.user.id)
+    );
+
     saveDB(db);
 
     return res.json({
@@ -323,8 +380,10 @@ app.delete("/produtos/:id", (req, res) => {
       message: "Produto excluído com sucesso"
     });
   } catch (error) {
-    console.error("Erro no DELETE /produtos/:id:", error);
-    return res.status(500).json({ error: "Erro ao excluir produto" });
+    console.error("Erro em DELETE /produtos/:id:", error);
+    return res.status(500).json({
+      error: "Erro ao excluir produto"
+    });
   }
 });
 
