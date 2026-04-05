@@ -40,11 +40,14 @@ router.put("/:id", async (req, res) => {
     const { nome, preco, categoria, estoque } = req.body;
 
     const result = await pool.query(
-      `UPDATE produtos
-       SET nome = $1, preco = $2, categoria = $3, estoque = $4
-       WHERE id = $5
-       RETURNING *`,
-      [nome, preco || 0, categoria || null, estoque || 0, id]
+      "UPDATE produtos SET nome = $1, preco = $2, categoria = $3, estoque = $4 WHERE id = $5 RETURNING *",
+      [
+        nome,
+        Number(preco || 0),
+        categoria || null,
+        Number(estoque || 0),
+        Number(id)
+      ]
     );
 
     if (result.rows.length === 0) {
