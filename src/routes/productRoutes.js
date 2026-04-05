@@ -1,50 +1,123 @@
 import express from "express";
-import { readDB, writeDB } from "../utils/db.js";
+import pool from "../config/db.js";
+import auth from "../middlewares/auth.js";
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
-  const db = readDB();
-  res.json(db.produtos);
+router.get("/", auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nome, preco, categoria, estoque, created_at, updated_at
+       FROM products
+       WHERE store_id = $1
+       ORDER BY id DESC`,
+      [req.user.storeId]
+    );
+
+    return res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Erro ao buscar produtos"
+    });
+  }
 });
 
-router.post("/", (req, res) => {
-  const db = readDB();
+router.post("/", auth, async (req, res) => {
+  try {
+    const { nome, preco, categoria, estoque } = req.body;
 
-  const novo = {
-    id: Date.now(),
-    ...req.body
-  };
+    if (!nome || preco === undefined || preco === null || preco === "") {
+      return res.status(400).json({
+        error: "Nome e preço são obrigatórios"
+      });
+    }
 
-  db.produtos.push(novo);
-  writeDB(db);
+    const result = await pool.query(
+      `INSERT INTO products (store_id, nome, preco, categoria, estoque)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nome, preco, categoria, estoque, created_at, updated_at`,
+      [
+        req.user.storeId,
+        String(nome).trim(),
+        Number(preco),
+        categoria ? String(categoria).trim() : "",
+        Number(estoque || 0)
+      ]
+    );
 
-  res.json(novo);
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Erro ao criar produto"
+    });
+  }
 });
 
-router.put("/:id", (req, res) => {
-  const db = readDB();
+router.put("/:id", auth, async (req, res) => {
+  try {
+    const { nome, preco, categoria, estoque } = req.body;
 
-  const index = db.produtos.findIndex(p => p.id == req.params.id);
+    const result = await pool.query(
+      `UPDATE products
+       SET nome = $1,
+           preco = $2,
+           categoria = $3,
+           estoque = $4,
+           updated_at = NOW()
+       WHERE id = $5 AND store_id = $6
+       RETURNING id, nome, preco, categoria, estoque, created_at, updated_at`,
+      [
+        String(nome).trim(),
+        Number(preco),
+        categoria ? String(categoria).trim() : "",
+        Number(estoque || 0),
+        Number(req.params.id),
+        req.user.storeId
+      ]
+    );
 
-  db.produtos[index] = {
-    ...db.produtos[index],
-    ...req.body
-  };
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Produto não encontrado"
+      });
+    }
 
-  writeDB(db);
-
-  res.json(db.produtos[index]);
+    return res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Erro ao atualizar produto"
+    });
+  }
 });
 
-router.delete("/:id", (req, res) => {
-  const db = readDB();
+router.delete("/:id", auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM products
+       WHERE id = $1 AND store_id = $2
+       RETURNING id`,
+      [Number(req.params.id), req.user.storeId]
+    );
 
-  db.produtos = db.produtos.filter(p => p.id != req.params.id);
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Produto não encontrado"
+      });
+    }
 
-  writeDB(db);
-
-  res.json({ message: "Deletado" });
+    return res.json({
+      ok: true,
+      message: "Produto excluído com sucesso"
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Erro ao excluir produto"
+    });
+  }
 });
 
 export default router;
