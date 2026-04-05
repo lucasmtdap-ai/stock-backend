@@ -2,190 +2,140 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(__dirname, "produtos.json");
+const DB = path.join(__dirname, "db.json");
+const SECRET = "rosa-saas-secret";
 
 app.use(cors());
 app.use(express.json());
 
-function garantirArquivo() {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, "[]", "utf8");
+function initDB() {
+  if (!fs.existsSync(DB)) {
+    fs.writeFileSync(
+      DB,
+      JSON.stringify({ users: [], products: [] }, null, 2)
+    );
   }
 }
 
-function lerProdutos() {
-  garantirArquivo();
+function readDB() {
+  initDB();
+  return JSON.parse(fs.readFileSync(DB, "utf8"));
+}
+
+function saveDB(data) {
+  fs.writeFileSync(DB, JSON.stringify(data, null, 2));
+}
+
+function auth(req, res, next) {
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token) return res.status(401).json({ error: "Sem token" });
 
   try {
-    const conteudo = fs.readFileSync(DB_FILE, "utf8");
-    const dados = JSON.parse(conteudo);
-    return Array.isArray(dados) ? dados : [];
-  } catch (error) {
-    console.error("Erro ao ler produtos.json:", error);
-    return [];
+    const decoded = jwt.verify(token, SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: "Token inválido" });
   }
-}
-
-function salvarProdutos(produtos) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(produtos, null, 2), "utf8");
 }
 
 function gerarId() {
-  return `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  return Date.now().toString();
 }
 
-function texto(valor) {
-  return String(valor || "").trim();
-}
+app.post("/register", (req, res) => {
+  const { nome, email, senha } = req.body;
+  const db = readDB();
 
-function numero(valor, padrao = 0) {
-  if (valor === undefined || valor === null || valor === "") {
-    return padrao;
-  }
+  if (db.users.length >= 2)
+    return res.status(403).json({ error: "Limite de usuários atingido" });
 
-  const n = Number(valor);
-  return Number.isNaN(n) ? padrao : n;
-}
+  if (db.users.find((u) => u.email === email))
+    return res.status(400).json({ error: "Email já existe" });
 
-app.get("/", (req, res) => {
-  res.json({
-    ok: true,
-    app: "Backend Rosa Boutique",
-    status: "online"
-  });
+  const user = { id: gerarId(), nome, email, senha };
+  db.users.push(user);
+  saveDB(db);
+
+  const token = jwt.sign(user, SECRET);
+
+  res.json({ token, user });
 });
 
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    message: "Servidor funcionando"
-  });
+app.post("/login", (req, res) => {
+  const { email, senha } = req.body;
+  const db = readDB();
+
+  const user = db.users.find(
+    (u) => u.email === email && u.senha === senha
+  );
+
+  if (!user)
+    return res.status(401).json({ error: "Login inválido" });
+
+  const token = jwt.sign(user, SECRET);
+
+  res.json({ token, user });
 });
 
-app.get("/produtos", (req, res) => {
-  const produtos = lerProdutos();
-  res.json(produtos);
+app.get("/produtos", auth, (req, res) => {
+  const db = readDB();
+  res.json(db.products.filter((p) => p.userId === req.user.id));
 });
 
-app.get("/produtos/:id", (req, res) => {
-  const { id } = req.params;
-  const produtos = lerProdutos();
-  const produto = produtos.find((p) => p.id === id);
+app.post("/produtos", auth, (req, res) => {
+  const db = readDB();
 
-  if (!produto) {
-    return res.status(404).json({
-      ok: false,
-      error: "Produto não encontrado."
-    });
-  }
-
-  res.json(produto);
-});
-
-app.post("/produtos", (req, res) => {
-  const { nome, preco, categoria, estoque } = req.body;
-
-  const nomeLimpo = texto(nome);
-  const precoLimpo = numero(preco, null);
-  const categoriaLimpa = texto(categoria);
-  const estoqueLimpo = numero(estoque, 0);
-
-  if (!nomeLimpo) {
-    return res.status(400).json({
-      ok: false,
-      error: "Nome do produto é obrigatório."
-    });
-  }
-
-  if (precoLimpo === null) {
-    return res.status(400).json({
-      ok: false,
-      error: "Preço do produto é obrigatório."
-    });
-  }
-
-  const produtos = lerProdutos();
-
-  const novoProduto = {
+  const novo = {
     id: gerarId(),
-    nome: nomeLimpo,
-    preco: precoLimpo,
-    categoria: categoriaLimpa,
-    estoque: estoqueLimpo,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    userId: req.user.id,
+    nome: req.body.nome,
+    preco: Number(req.body.preco),
+    categoria: req.body.categoria || "",
+    estoque: Number(req.body.estoque || 0)
   };
 
-  produtos.push(novoProduto);
-  salvarProdutos(produtos);
+  db.products.push(novo);
+  saveDB(db);
 
-  res.status(201).json(novoProduto);
+  res.json(novo);
 });
 
-app.put("/produtos/:id", (req, res) => {
-  const { id } = req.params;
-  const { nome, preco, categoria, estoque } = req.body;
+app.put("/produtos/:id", auth, (req, res) => {
+  const db = readDB();
+  const index = db.products.findIndex(
+    (p) => p.id === req.params.id && p.userId === req.user.id
+  );
 
-  const produtos = lerProdutos();
-  const index = produtos.findIndex((p) => p.id === id);
+  if (index === -1) return res.status(404).json({ error: "Não encontrado" });
 
-  if (index === -1) {
-    return res.status(404).json({
-      ok: false,
-      error: "Produto não encontrado."
-    });
-  }
-
-  const atual = produtos[index];
-
-  const atualizado = {
-    ...atual,
-    nome: nome !== undefined ? texto(nome) : atual.nome,
-    preco: preco !== undefined ? numero(preco, atual.preco) : atual.preco,
-    categoria: categoria !== undefined ? texto(categoria) : atual.categoria,
-    estoque: estoque !== undefined ? numero(estoque, atual.estoque) : atual.estoque,
-    updatedAt: new Date().toISOString()
+  db.products[index] = {
+    ...db.products[index],
+    ...req.body
   };
 
-  if (!atualizado.nome) {
-    return res.status(400).json({
-      ok: false,
-      error: "Nome do produto é obrigatório."
-    });
-  }
-
-  produtos[index] = atualizado;
-  salvarProdutos(produtos);
-
-  res.json(atualizado);
+  saveDB(db);
+  res.json(db.products[index]);
 });
 
-app.delete("/produtos/:id", (req, res) => {
-  const { id } = req.params;
+app.delete("/produtos/:id", auth, (req, res) => {
+  const db = readDB();
 
-  const produtos = lerProdutos();
-  const existe = produtos.some((p) => p.id === id);
+  db.products = db.products.filter(
+    (p) => !(p.id === req.params.id && p.userId === req.user.id)
+  );
 
-  if (!existe) {
-    return res.status(404).json({
-      ok: false,
-      error: "Produto não encontrado."
-    });
-  }
+  saveDB(db);
 
-  const filtrados = produtos.filter((p) => p.id !== id);
-  salvarProdutos(filtrados);
-
-  res.json({
-    ok: true,
-    message: "Produto excluído com sucesso."
-  });
+  res.json({ ok: true });
 });
 
 app.listen(PORT, () => {
-  garantirArquivo();
-  console.log(`Servidor rodando na porta ${PORT}`);
+  initDB();
+  console.log("Servidor rodando");
 });
