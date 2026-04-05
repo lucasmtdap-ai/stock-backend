@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
 // CRIAR PRODUTO
 router.post("/", async (req, res) => {
   try {
-    const { nome, preco, categoria, estoque } = req.body;
+    const { nome, preco } = req.body;
 
     const result = await pool.query(
       "INSERT INTO produtos (nome, preco, categoria, estoque) VALUES ($1, $2, $3, $4) RETURNING *",
