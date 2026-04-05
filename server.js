@@ -2,273 +2,135 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
-const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(__dirname, "db.json");
-const JWT_SECRET = process.env.JWT_SECRET || "rosa-boutique-secret-key";
+const DB_FILE = path.join(__dirname, "produtos.json");
 
 app.use(cors());
 app.use(express.json());
 
-function ensureDb() {
+function garantirArquivo() {
   if (!fs.existsSync(DB_FILE)) {
-    const initialData = {
-      users: [],
-      products: []
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), "utf8");
+    fs.writeFileSync(DB_FILE, "[]", "utf8");
   }
 }
 
-function readDb() {
-  ensureDb();
+function lerProdutos() {
+  garantirArquivo();
+
   try {
-    const raw = fs.readFileSync(DB_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return {
-      users: Array.isArray(parsed.users) ? parsed.users : [],
-      products: Array.isArray(parsed.products) ? parsed.products : []
-    };
+    const conteudo = fs.readFileSync(DB_FILE, "utf8");
+    const dados = JSON.parse(conteudo);
+    return Array.isArray(dados) ? dados : [];
   } catch (error) {
-    console.error("Erro ao ler db.json:", error);
-    return { users: [], products: [] };
+    console.error("Erro ao ler produtos.json:", error);
+    return [];
   }
 }
 
-function writeDb(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+function salvarProdutos(produtos) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(produtos, null, 2), "utf8");
 }
 
-function generateId() {
+function gerarId() {
   return `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 }
 
-function normalizeText(value) {
-  return String(value || "").trim();
+function texto(valor) {
+  return String(valor || "").trim();
 }
 
-function normalizeNumber(value, defaultValue = 0) {
-  if (value === undefined || value === null || value === "") {
-    return defaultValue;
-  }
-  const number = Number(value);
-  return Number.isNaN(number) ? defaultValue : number;
-}
-
-function createToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      nome: user.nome
-    },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-}
-
-function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ ok: false, error: "Token não enviado." });
+function numero(valor, padrao = 0) {
+  if (valor === undefined || valor === null || valor === "") {
+    return padrao;
   }
 
-  const token = authHeader.split(" ")[1];
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ ok: false, error: "Token inválido." });
-  }
+  const n = Number(valor);
+  return Number.isNaN(n) ? padrao : n;
 }
 
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    app: "Rosa Boutique SaaS Backend",
+    app: "Backend Rosa Boutique",
     status: "online"
   });
 });
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, message: "Servidor funcionando" });
-});
-
-app.post("/register", (req, res) => {
-  const { nome, email, senha } = req.body;
-  const cleanName = normalizeText(nome);
-  const cleanEmail = normalizeText(email).toLowerCase();
-  const cleanPassword = normalizeText(senha);
-
-  if (!cleanName || !cleanEmail || !cleanPassword) {
-    return res.status(400).json({
-      ok: false,
-      error: "Nome, email e senha são obrigatórios."
-    });
-  }
-
-  const db = readDb();
-
-  if (db.users.length >= 2) {
-    return res.status(403).json({
-      ok: false,
-      error: "Limite de 2 usuários atingido."
-    });
-  }
-
-  const emailExists = db.users.some((u) => u.email === cleanEmail);
-  if (emailExists) {
-    return res.status(400).json({
-      ok: false,
-      error: "Esse email já está cadastrado."
-    });
-  }
-
-  const newUser = {
-    id: generateId(),
-    nome: cleanName,
-    email: cleanEmail,
-    senha: cleanPassword,
-    createdAt: new Date().toISOString()
-  };
-
-  db.users.push(newUser);
-  writeDb(db);
-
-  const token = createToken(newUser);
-
-  res.status(201).json({
-    ok: true,
-    token,
-    user: {
-      id: newUser.id,
-      nome: newUser.nome,
-      email: newUser.email
-    }
-  });
-});
-
-app.post("/login", (req, res) => {
-  const { email, senha } = req.body;
-  const cleanEmail = normalizeText(email).toLowerCase();
-  const cleanPassword = normalizeText(senha);
-
-  if (!cleanEmail || !cleanPassword) {
-    return res.status(400).json({
-      ok: false,
-      error: "Email e senha são obrigatórios."
-    });
-  }
-
-  const db = readDb();
-  const user = db.users.find(
-    (u) => u.email === cleanEmail && u.senha === cleanPassword
-  );
-
-  if (!user) {
-    return res.status(401).json({
-      ok: false,
-      error: "Email ou senha inválidos."
-    });
-  }
-
-  const token = createToken(user);
-
   res.json({
     ok: true,
-    token,
-    user: {
-      id: user.id,
-      nome: user.nome,
-      email: user.email
-    }
+    message: "Servidor funcionando"
   });
 });
 
-app.get("/me", authMiddleware, (req, res) => {
-  res.json({
-    ok: true,
-    user: req.user
-  });
+app.get("/produtos", (req, res) => {
+  const produtos = lerProdutos();
+  res.json(produtos);
 });
 
-app.get("/produtos", authMiddleware, (req, res) => {
-  const db = readDb();
-  const products = db.products.filter((p) => p.userId === req.user.id);
-  res.json(products);
-});
-
-app.get("/produtos/:id", authMiddleware, (req, res) => {
+app.get("/produtos/:id", (req, res) => {
   const { id } = req.params;
-  const db = readDb();
-  const product = db.products.find(
-    (p) => p.id === id && p.userId === req.user.id
-  );
+  const produtos = lerProdutos();
+  const produto = produtos.find((p) => p.id === id);
 
-  if (!product) {
+  if (!produto) {
     return res.status(404).json({
       ok: false,
       error: "Produto não encontrado."
     });
   }
 
-  res.json(product);
+  res.json(produto);
 });
 
-app.post("/produtos", authMiddleware, (req, res) => {
+app.post("/produtos", (req, res) => {
   const { nome, preco, categoria, estoque } = req.body;
 
-  const cleanName = normalizeText(nome);
-  const cleanCategory = normalizeText(categoria);
-  const cleanPrice = normalizeNumber(preco, null);
-  const cleanStock = normalizeNumber(estoque, 0);
+  const nomeLimpo = texto(nome);
+  const precoLimpo = numero(preco, null);
+  const categoriaLimpa = texto(categoria);
+  const estoqueLimpo = numero(estoque, 0);
 
-  if (!cleanName) {
+  if (!nomeLimpo) {
     return res.status(400).json({
       ok: false,
-      error: "O nome do produto é obrigatório."
+      error: "Nome do produto é obrigatório."
     });
   }
 
-  if (cleanPrice === null) {
+  if (precoLimpo === null) {
     return res.status(400).json({
       ok: false,
-      error: "O preço do produto é obrigatório."
+      error: "Preço do produto é obrigatório."
     });
   }
 
-  const db = readDb();
+  const produtos = lerProdutos();
 
-  const newProduct = {
-    id: generateId(),
-    userId: req.user.id,
-    nome: cleanName,
-    preco: cleanPrice,
-    categoria: cleanCategory,
-    estoque: cleanStock,
+  const novoProduto = {
+    id: gerarId(),
+    nome: nomeLimpo,
+    preco: precoLimpo,
+    categoria: categoriaLimpa,
+    estoque: estoqueLimpo,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  db.products.push(newProduct);
-  writeDb(db);
+  produtos.push(novoProduto);
+  salvarProdutos(produtos);
 
-  res.status(201).json(newProduct);
+  res.status(201).json(novoProduto);
 });
 
-app.put("/produtos/:id", authMiddleware, (req, res) => {
+app.put("/produtos/:id", (req, res) => {
   const { id } = req.params;
   const { nome, preco, categoria, estoque } = req.body;
 
-  const db = readDb();
-  const index = db.products.findIndex(
-    (p) => p.id === id && p.userId === req.user.id
-  );
+  const produtos = lerProdutos();
+  const index = produtos.findIndex((p) => p.id === id);
 
   if (index === -1) {
     return res.status(404).json({
@@ -277,50 +139,45 @@ app.put("/produtos/:id", authMiddleware, (req, res) => {
     });
   }
 
-  const current = db.products[index];
+  const atual = produtos[index];
 
-  const updated = {
-    ...current,
-    nome: nome !== undefined ? normalizeText(nome) : current.nome,
-    preco: preco !== undefined ? normalizeNumber(preco, current.preco) : current.preco,
-    categoria: categoria !== undefined ? normalizeText(categoria) : current.categoria,
-    estoque: estoque !== undefined ? normalizeNumber(estoque, current.estoque) : current.estoque,
+  const atualizado = {
+    ...atual,
+    nome: nome !== undefined ? texto(nome) : atual.nome,
+    preco: preco !== undefined ? numero(preco, atual.preco) : atual.preco,
+    categoria: categoria !== undefined ? texto(categoria) : atual.categoria,
+    estoque: estoque !== undefined ? numero(estoque, atual.estoque) : atual.estoque,
     updatedAt: new Date().toISOString()
   };
 
-  if (!updated.nome) {
+  if (!atualizado.nome) {
     return res.status(400).json({
       ok: false,
-      error: "O nome do produto é obrigatório."
+      error: "Nome do produto é obrigatório."
     });
   }
 
-  db.products[index] = updated;
-  writeDb(db);
+  produtos[index] = atualizado;
+  salvarProdutos(produtos);
 
-  res.json(updated);
+  res.json(atualizado);
 });
 
-app.delete("/produtos/:id", authMiddleware, (req, res) => {
+app.delete("/produtos/:id", (req, res) => {
   const { id } = req.params;
-  const db = readDb();
 
-  const exists = db.products.some(
-    (p) => p.id === id && p.userId === req.user.id
-  );
+  const produtos = lerProdutos();
+  const existe = produtos.some((p) => p.id === id);
 
-  if (!exists) {
+  if (!existe) {
     return res.status(404).json({
       ok: false,
       error: "Produto não encontrado."
     });
   }
 
-  db.products = db.products.filter(
-    (p) => !(p.id === id && p.userId === req.user.id)
-  );
-
-  writeDb(db);
+  const filtrados = produtos.filter((p) => p.id !== id);
+  salvarProdutos(filtrados);
 
   res.json({
     ok: true,
@@ -329,6 +186,6 @@ app.delete("/produtos/:id", authMiddleware, (req, res) => {
 });
 
 app.listen(PORT, () => {
-  ensureDb();
+  garantirArquivo();
   console.log(`Servidor rodando na porta ${PORT}`);
 });
