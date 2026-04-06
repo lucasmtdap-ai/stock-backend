@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
+import salesRoutes from "./routes/salesRoutes.js";
 import { initDb } from "./utils/initDb.js";
 
 dotenv.config();
@@ -16,7 +17,6 @@ app.use(cors({
 }));
 
 app.options("*", cors());
-
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -36,6 +36,7 @@ app.get("/health", (req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/produtos", productRoutes);
+app.use("/vendas", salesRoutes);
 
 await initDb();
 
