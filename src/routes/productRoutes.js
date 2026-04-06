@@ -7,7 +7,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, nome, preco FROM produtos ORDER BY id DESC"
+      "SELECT id, nome, preco, custo FROM produtos ORDER BY id DESC"
     );
     res.json(result.rows);
   } catch (err) {
@@ -19,15 +19,15 @@ router.get("/", async (req, res) => {
 // CADASTRAR PRODUTO
 router.post("/", async (req, res) => {
   try {
-    const { nome, preco } = req.body;
+    const { nome, preco, custo } = req.body;
 
     if (!nome || preco === undefined || preco === null || preco === "") {
       return res.status(400).json({ error: "Nome e preço são obrigatórios" });
     }
 
     const result = await pool.query(
-      "INSERT INTO produtos (nome, preco) VALUES ($1, $2) RETURNING id, nome, preco",
-      [nome, Number(preco)]
+      "INSERT INTO produtos (nome, preco, custo) VALUES ($1, $2, $3) RETURNING id, nome, preco, custo",
+      [nome, Number(preco), Number(custo || 0)]
     );
 
     res.status(201).json(result.rows[0]);
@@ -41,15 +41,15 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, preco } = req.body;
+    const { nome, preco, custo } = req.body;
 
     if (!nome || preco === undefined || preco === null || preco === "") {
       return res.status(400).json({ error: "Nome e preço são obrigatórios" });
     }
 
     const result = await pool.query(
-      "UPDATE produtos SET nome = $1, preco = $2 WHERE id = $3 RETURNING id, nome, preco",
-      [nome, Number(preco), Number(id)]
+      "UPDATE produtos SET nome = $1, preco = $2, custo = $3 WHERE id = $4 RETURNING id, nome, preco, custo",
+      [nome, Number(preco), Number(custo || 0), Number(id)]
     );
 
     if (result.rows.length === 0) {
