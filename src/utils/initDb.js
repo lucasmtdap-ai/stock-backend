@@ -2,6 +2,22 @@ import { pool } from "../config/db.js";
 
 export async function initDb() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      loja TEXT,
+      email TEXT UNIQUE NOT NULL,
+      senha TEXT NOT NULL,
+      plano TEXT NOT NULL DEFAULT 'basico'
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS plano TEXT NOT NULL DEFAULT 'basico';
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS produtos (
       id SERIAL PRIMARY KEY,
       nome TEXT NOT NULL,
