@@ -10,7 +10,9 @@ router.post("/register", async (req, res) => {
     const { nome, loja, email, senha } = req.body;
 
     if (!nome || !email || !senha) {
-      return res.status(400).json({ error: "Nome, email e senha são obrigatórios" });
+      return res.status(400).json({
+        error: "Nome, email e senha são obrigatórios"
+      });
     }
 
     const existe = await pool.query(
@@ -19,20 +21,26 @@ router.post("/register", async (req, res) => {
     );
 
     if (existe.rows.length > 0) {
-      return res.status(400).json({ error: "Email já cadastrado" });
+      return res.status(400).json({
+        error: "Email já cadastrado"
+      });
     }
 
     const senhaHash = await bcrypt.hash(senha, 10);
 
     const result = await pool.query(
-      "INSERT INTO usuarios (nome, loja, email, senha, plano) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, loja, email, plano",
+      `INSERT INTO usuarios (nome, loja, email, senha, plano)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nome, loja, email, plano`,
       [nome, loja || "", email, senhaHash, "basico"]
     );
 
-    res.status(201).json(result.rows[0]);
+    return res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Erro no cadastro:", err);
-    res.status(500).json({ error: "Erro ao cadastrar usuário" });
+    return res.status(500).json({
+      error: "Erro ao cadastrar usuário"
+    });
   }
 });
 
@@ -46,7 +54,9 @@ router.post("/login", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: "Usuário não encontrado" });
+      return res.status(400).json({
+        error: "Usuário não encontrado"
+      });
     }
 
     const usuario = result.rows[0];
@@ -54,7 +64,9 @@ router.post("/login", async (req, res) => {
     const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
 
     if (!senhaCorreta) {
-      return res.status(400).json({ error: "Senha incorreta" });
+      return res.status(400).json({
+        error: "Senha incorreta"
+      });
     }
 
     const token = jwt.sign(
@@ -66,7 +78,7 @@ router.post("/login", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: usuario.id,
@@ -78,21 +90,24 @@ router.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error("Erro no login:", err);
-    res.status(500).json({ error: "Erro ao fazer login" });
+    return res.status(500).json({
+      error: "Erro ao fazer login"
+    });
   }
 });
 
 router.get("/upgrade", async (req, res) => {
   try {
-    await pool.query(`
-      UPDATE usuarios
-      SET plano = 'premium'
-    `);
-
-    res.json({ ok: true, message: "Todos usuários viraram premium" });
+    await pool.query("UPDATE usuarios SET plano = 'premium'");
+    return res.json({
+      ok: true,
+      message: "Todos usuários viraram premium"
+    });
   } catch (err) {
     console.error("Erro ao atualizar plano:", err);
-    res.status(500).json({ error: "Erro ao atualizar plano" });
+    return res.status(500).json({
+      error: "Erro ao atualizar plano"
+    });
   }
 });
 
