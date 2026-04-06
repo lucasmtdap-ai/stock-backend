@@ -1,60 +1,85 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
 import { pool } from "../config/db.js";
 
 const router = express.Router();
 
-// REGISTER
 router.post("/register", async (req, res) => {
-  const { email, senha, loja } = req.body;
+  try {
+    const { nome, loja, email, senha } = req.body;
 
-  const hash = await bcrypt.hash(senha, 10);
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ error: "Nome, email e senha são obrigatórios" });
+    }
 
-  const lojaRes = await pool.query(
-    "INSERT INTO lojas(nome) VALUES($1) RETURNING id",
-    [loja]
-  );
+    const existe = await pool.query(
+      "SELECT id FROM usuarios WHERE email = $1",
+      [email]
+    );
 
-  const loja_id = lojaRes.rows[0].id;
+    if (existe.rows.length > 0) {
+      return res.status(400).json({ error: "Email já cadastrado" });
+    }
 
-  const userRes = await pool.query(
-    "INSERT INTO usuarios(email, senha, loja_id) VALUES($1,$2,$3) RETURNING *",
-    [email, hash, loja_id]
-  );
+    const senhaHash = await bcrypt.hash(senha, 10);
 
-  res.json(userRes.rows[0]);
+    const result = await pool.query(
+      "INSERT INTO usuarios (nome, loja, email, senha, plano) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, loja, email, plano",
+      [nome, loja || "", email, senhaHash, "basico"]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Erro no cadastro:", err);
+    res.status(500).json({ error: "Erro ao cadastrar usuário" });
+  }
 });
 
-// LOGIN
 router.post("/login", async (req, res) => {
-  const { email, senha } = req.body;
+  try {
+    const { email, senha } = req.body;
 
-  const user = await pool.query(
-    "SELECT * FROM usuarios WHERE email=$1",
-    [email]
-  );
+    const result = await pool.query(
+      "SELECT * FROM usuarios WHERE email = $1",
+      [email]
+    );
 
-  if (!user.rows.length) {
-    return res.status(400).json({ error: "Usuário não encontrado" });
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: "Usuário não encontrado" });
+    }
+
+    const usuario = result.rows[0];
+
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaCorreta) {
+      return res.status(400).json({ error: "Senha incorreta" });
+    }
+
+    const token = jwt.sign(
+      {
+        id: usuario.id,
+        email: usuario.email
+      },
+      process.env.JWT_SECRET || "segredo_dev",
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: usuario.id,
+        nome: usuario.nome,
+        loja: usuario.loja,
+        email: usuario.email,
+        plano: usuario.plano || "basico"
+      }
+    });
+  } catch (err) {
+    console.error("Erro no login:", err);
+    res.status(500).json({ error: "Erro ao fazer login" });
   }
-
-  const valid = await bcrypt.compare(senha, user.rows[0].senha);
-
-  if (!valid) {
-    return res.status(400).json({ error: "Senha inválida" });
-  }
-
-  const token = jwt.sign(
-    {
-      id: user.rows[0].id,
-      loja_id: user.rows[0].loja_id
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
-  );
-
-  res.json({ token });
 });
 
 export default router;
