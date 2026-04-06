@@ -82,17 +82,18 @@ router.post("/login", async (req, res) => {
   }
 });
 
-export default router;
-
 router.get("/upgrade", async (req, res) => {
   try {
     await pool.query(`
-      UPDATE usuarios 
+      UPDATE usuarios
       SET plano = 'premium'
     `);
 
     res.json({ ok: true, message: "Todos usuários viraram premium" });
   } catch (err) {
+    console.error("Erro ao atualizar plano:", err);
     res.status(500).json({ error: "Erro ao atualizar plano" });
   }
 });
+
+export default router;
