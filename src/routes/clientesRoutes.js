@@ -16,6 +16,56 @@ router.get("/", async (req, res) => {
   }
 });
 
+// DETALHE DO CLIENTE + HISTÓRICO
+router.get("/:id/historico", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const clienteResult = await pool.query(
+      "SELECT id, nome, telefone, email, created_at FROM clientes WHERE id = $1",
+      [Number(id)]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({ error: "Cliente não encontrado" });
+    }
+
+    const vendasResult = await pool.query(
+      `
+      SELECT
+        v.id,
+        v.produto_id,
+        p.nome AS produto_nome,
+        v.quantidade,
+        v.valor_unitario,
+        v.valor_total,
+        v.created_at
+      FROM vendas v
+      JOIN produtos p ON p.id = v.produto_id
+      WHERE v.cliente_id = $1
+      ORDER BY v.id DESC
+      `,
+      [Number(id)]
+    );
+
+    const vendas = vendasResult.rows;
+    const totalGasto = vendas.reduce(
+      (acc, venda) => acc + Number(venda.valor_total || 0),
+      0
+    );
+
+    res.json({
+      cliente: clienteResult.rows[0],
+      vendas,
+      totalCompras: vendas.length,
+      totalGasto
+    });
+  } catch (err) {
+    console.error("Erro ao buscar histórico do cliente:", err);
+    res.status(500).json({ error: "Erro ao buscar histórico do cliente" });
+  }
+});
+
 // CADASTRAR CLIENTE
 router.post("/", async (req, res) => {
   try {
