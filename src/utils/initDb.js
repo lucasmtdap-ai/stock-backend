@@ -69,4 +69,15 @@ export async function initDb() {
     ALTER TABLE vendas
     ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS financeiro (
+      id SERIAL PRIMARY KEY,
+      tipo TEXT NOT NULL,
+      descricao TEXT NOT NULL,
+      valor NUMERIC NOT NULL DEFAULT 0,
+      categoria TEXT DEFAULT 'Geral',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
 }
