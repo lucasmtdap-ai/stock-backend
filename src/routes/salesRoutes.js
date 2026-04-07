@@ -3,10 +3,12 @@ import { pool } from "../config/db.js";
 
 const router = express.Router();
 
-// LISTAR VENDAS
+// LISTAR VENDAS COM FILTRO + RESUMO
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(`
+    const { inicio, fim } = req.query;
+
+    let query = `
       SELECT
         v.id,
         v.produto_id,
@@ -20,10 +22,34 @@ router.get("/", async (req, res) => {
       FROM vendas v
       JOIN produtos p ON p.id = v.produto_id
       LEFT JOIN clientes c ON c.id = v.cliente_id
-      ORDER BY v.id DESC
-    `);
+    `;
 
-    res.json(result.rows);
+    const values = [];
+
+    if (inicio && fim) {
+      query += ` WHERE v.created_at BETWEEN $1 AND $2`;
+      values.push(inicio, fim);
+    }
+
+    query += ` ORDER BY v.id DESC`;
+
+    const result = await pool.query(query, values);
+
+    const vendas = result.rows;
+
+    const totalVendas = vendas.length;
+    const totalValor = vendas.reduce(
+      (acc, v) => acc + Number(v.valor_total || 0),
+      0
+    );
+
+    res.json({
+      vendas,
+      resumo: {
+        totalVendas,
+        totalValor
+      }
+    });
   } catch (err) {
     console.error("Erro ao buscar vendas:", err);
     res.status(500).json({ error: "Erro ao buscar vendas" });
@@ -39,7 +65,9 @@ router.post("/", async (req, res) => {
 
     if (!produtoId || !quantidade || Number(quantidade) <= 0) {
       client.release();
-      return res.status(400).json({ error: "Produto e quantidade são obrigatórios" });
+      return res.status(400).json({
+        error: "Produto e quantidade são obrigatórios"
+      });
     }
 
     await client.query("BEGIN");
