@@ -53,4 +53,14 @@ export async function initDb() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clientes (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      telefone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
 }
