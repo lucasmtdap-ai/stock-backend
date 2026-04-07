@@ -7,6 +7,7 @@ import salesRoutes from "./routes/salesRoutes.js";
 import clientesRoutes from "./routes/clientesRoutes.js";
 import financeiroRoutes from "./routes/financeiroRoutes.js";
 import fornecedoresRoutes from "./routes/fornecedoresRoutes.js";
+import marcasRoutes from "./routes/marcasRoutes.js";
 import { initDb } from "./utils/initDb.js";
 
 dotenv.config();
@@ -36,6 +37,7 @@ app.use("/vendas", salesRoutes);
 app.use("/clientes", clientesRoutes);
 app.use("/financeiro", financeiroRoutes);
 app.use("/fornecedores", fornecedoresRoutes);
+app.use("/marcas", marcasRoutes);
 
 await initDb();
 
