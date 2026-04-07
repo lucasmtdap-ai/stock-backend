@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import salesRoutes from "./routes/salesRoutes.js";
+import clientesRoutes from "./routes/clientesRoutes.js";
 import { initDb } from "./utils/initDb.js";
 
 dotenv.config();
@@ -37,6 +38,7 @@ app.get("/health", (req, res) => {
 app.use("/auth", authRoutes);
 app.use("/produtos", productRoutes);
 app.use("/vendas", salesRoutes);
+app.use("/clientes", clientesRoutes);
 
 await initDb();
 
