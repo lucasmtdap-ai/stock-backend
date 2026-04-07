@@ -44,9 +44,20 @@ export async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS clientes (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      telefone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
       produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
       quantidade INTEGER NOT NULL DEFAULT 1,
       valor_unitario NUMERIC NOT NULL DEFAULT 0,
       valor_total NUMERIC NOT NULL DEFAULT 0,
@@ -55,12 +66,7 @@ export async function initDb() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS clientes (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      telefone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
+    ALTER TABLE vendas
+    ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
 }
