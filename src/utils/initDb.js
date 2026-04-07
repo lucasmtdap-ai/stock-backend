@@ -74,6 +74,17 @@ export async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS movimentacoes (
+      id SERIAL PRIMARY KEY,
+      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL,
+      quantidade INTEGER NOT NULL,
+      motivo TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
       produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
