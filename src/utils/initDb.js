@@ -133,7 +133,17 @@ export async function initDb() {
     );
   `);
 
-  // 🔥 DEFINE VOCÊ COMO ADMIN
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS configuracoes (
+      id SERIAL PRIMARY KEY,
+      nome_loja TEXT DEFAULT '',
+      telefone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      rodape TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
   const adminEmail = "Lucasmtdap@gmail.com";
 
   await pool.query(
