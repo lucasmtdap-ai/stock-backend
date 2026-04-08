@@ -8,13 +8,19 @@ export async function initDb() {
       loja TEXT,
       email TEXT UNIQUE NOT NULL,
       senha TEXT NOT NULL,
-      plano TEXT NOT NULL DEFAULT 'basico'
+      plano TEXT NOT NULL DEFAULT 'basico',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
 
   await pool.query(`
     ALTER TABLE usuarios
     ADD COLUMN IF NOT EXISTS plano TEXT NOT NULL DEFAULT 'basico';
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
   await pool.query(`
@@ -35,21 +41,6 @@ export async function initDb() {
       estoque INTEGER NOT NULL DEFAULT 0,
       categoria TEXT DEFAULT 'Sem categoria'
     );
-  `);
-
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS custo NUMERIC NOT NULL DEFAULT 0;
-  `);
-
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS estoque INTEGER NOT NULL DEFAULT 0;
-  `);
-
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'Sem categoria';
   `);
 
   await pool.query(`
@@ -103,11 +94,6 @@ export async function initDb() {
       valor_total NUMERIC NOT NULL DEFAULT 0,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
-  `);
-
-  await pool.query(`
-    ALTER TABLE vendas
-    ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
 
   await pool.query(`
