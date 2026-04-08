@@ -10,6 +10,7 @@ import fornecedoresRoutes from "./routes/fornecedoresRoutes.js";
 import marcasRoutes from "./routes/marcasRoutes.js";
 import movimentacoesRoutes from "./routes/movimentacoesRoutes.js";
 import categoriasRoutes from "./routes/categoriasRoutes.js";
+import usuariosRoutes from "./routes/usuariosRoutes.js";
 import { initDb } from "./utils/initDb.js";
 
 dotenv.config();
@@ -42,6 +43,7 @@ app.use("/fornecedores", fornecedoresRoutes);
 app.use("/marcas", marcasRoutes);
 app.use("/movimentacoes", movimentacoesRoutes);
 app.use("/categorias", categoriasRoutes);
+app.use("/usuarios", usuariosRoutes);
 
 await initDb();
 
