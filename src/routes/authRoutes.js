@@ -5,6 +5,7 @@ import { pool } from "../config/db.js";
 
 const router = express.Router();
 
+// CADASTRO
 router.post("/register", async (req, res) => {
   try {
     const { nome, loja, email, senha } = req.body;
@@ -29,21 +30,22 @@ router.post("/register", async (req, res) => {
     const senhaHash = await bcrypt.hash(senha, 10);
 
     const result = await pool.query(
-      `INSERT INTO usuarios (nome, loja, email, senha, plano)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, nome, loja, email, plano`,
-      [nome, loja || "", email, senhaHash, "basico"]
+      `
+      INSERT INTO usuarios (nome, loja, email, senha, plano, role)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, nome, loja, email, plano, role, created_at
+      `,
+      [nome, loja || "", email, senhaHash, "basico", "user"]
     );
 
-    return res.status(201).json(result.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Erro no cadastro:", err);
-    return res.status(500).json({
-      error: "Erro ao cadastrar usuário"
-    });
+    res.status(500).json({ error: "Erro ao cadastrar usuário" });
   }
 });
 
+// LOGIN
 router.post("/login", async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -54,9 +56,7 @@ router.post("/login", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(400).json({
-        error: "Usuário não encontrado"
-      });
+      return res.status(400).json({ error: "Usuário não encontrado" });
     }
 
     const usuario = result.rows[0];
@@ -64,50 +64,49 @@ router.post("/login", async (req, res) => {
     const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
 
     if (!senhaCorreta) {
-      return res.status(400).json({
-        error: "Senha incorreta"
-      });
+      return res.status(400).json({ error: "Senha incorreta" });
     }
 
     const token = jwt.sign(
       {
         id: usuario.id,
-        email: usuario.email
+        email: usuario.email,
+        role: usuario.role || "user"
       },
       process.env.JWT_SECRET || "segredo_dev",
       { expiresIn: "7d" }
     );
 
-    return res.json({
+    res.json({
       token,
       user: {
         id: usuario.id,
         nome: usuario.nome,
         loja: usuario.loja,
         email: usuario.email,
-        plano: usuario.plano || "basico"
+        plano: usuario.plano || "basico",
+        role: usuario.role || "user",
+        created_at: usuario.created_at || null
       }
     });
   } catch (err) {
     console.error("Erro no login:", err);
-    return res.status(500).json({
-      error: "Erro ao fazer login"
-    });
+    res.status(500).json({ error: "Erro ao fazer login" });
   }
 });
 
+// UPGRADE TEMPORÁRIO
 router.get("/upgrade", async (req, res) => {
   try {
-    await pool.query("UPDATE usuarios SET plano = 'premium'");
-    return res.json({
-      ok: true,
-      message: "Todos usuários viraram premium"
-    });
+    await pool.query(`
+      UPDATE usuarios
+      SET plano = 'premium'
+    `);
+
+    res.json({ ok: true, message: "Todos usuários viraram premium" });
   } catch (err) {
     console.error("Erro ao atualizar plano:", err);
-    return res.status(500).json({
-      error: "Erro ao atualizar plano"
-    });
+    res.status(500).json({ error: "Erro ao atualizar plano" });
   }
 });
 
