@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import salesRoutes from "./routes/salesRoutes.js";
@@ -11,6 +12,8 @@ import marcasRoutes from "./routes/marcasRoutes.js";
 import movimentacoesRoutes from "./routes/movimentacoesRoutes.js";
 import categoriasRoutes from "./routes/categoriasRoutes.js";
 import usuariosRoutes from "./routes/usuariosRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+
 import { initDb } from "./utils/initDb.js";
 
 dotenv.config();
@@ -44,6 +47,7 @@ app.use("/marcas", marcasRoutes);
 app.use("/movimentacoes", movimentacoesRoutes);
 app.use("/categorias", categoriasRoutes);
 app.use("/usuarios", usuariosRoutes);
+app.use("/admin", adminRoutes);
 
 await initDb();
 
