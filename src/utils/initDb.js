@@ -132,4 +132,16 @@ export async function initDb() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  // 🔥 DEFINE VOCÊ COMO ADMIN
+  const adminEmail = "Lucasmtdap@gmail.com";
+
+  await pool.query(
+    `
+    UPDATE usuarios
+    SET role = 'admin'
+    WHERE email = $1
+    `,
+    [adminEmail]
+  );
 }
