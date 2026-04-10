@@ -81,26 +81,28 @@ export async function initDb() {
 
   // PRODUTOS
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS produtos (
-      id SERIAL PRIMARY KEY,
-      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-      nome TEXT NOT NULL,
-      preco NUMERIC NOT NULL DEFAULT 0,
-      custo NUMERIC NOT NULL DEFAULT 0,
-      estoque INTEGER NOT NULL DEFAULT 0,
-      categoria TEXT DEFAULT 'Sem categoria'
-    );
-  `);
+  CREATE TABLE IF NOT EXISTS produtos (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+    nome TEXT NOT NULL,
+    preco NUMERIC NOT NULL DEFAULT 0,
+    custo NUMERIC NOT NULL DEFAULT 0,
+    estoque INTEGER NOT NULL DEFAULT 0,
+    categoria TEXT DEFAULT 'Sem categoria',
+    marca TEXT DEFAULT 'Sem marca',
+    fornecedor TEXT DEFAULT 'Sem fornecedor'
+  );
+`);
 
   await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
-  `);
+  ALTER TABLE produtos
+  ADD COLUMN IF NOT EXISTS marca TEXT DEFAULT 'Sem marca';
+`);
 
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS custo NUMERIC NOT NULL DEFAULT 0;
-  `);
+await pool.query(`
+  ALTER TABLE produtos
+  ADD COLUMN IF NOT EXISTS fornecedor TEXT DEFAULT 'Sem fornecedor';
+`);
 
   await pool.query(`
     ALTER TABLE produtos
