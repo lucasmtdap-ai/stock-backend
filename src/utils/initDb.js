@@ -1,10 +1,11 @@
 import { pool } from "../config/db.js";
 
 export async function initDb() {
+  // USUÁRIOS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS usuarios (
       id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
+      nome TEXT,
       loja TEXT,
       email TEXT UNIQUE NOT NULL,
       senha TEXT NOT NULL,
@@ -13,6 +14,17 @@ export async function initDb() {
       status TEXT NOT NULL DEFAULT 'ativo',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+  `);
+
+  // Migração de colunas antigas/faltantes
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS nome TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS loja TEXT;
   `);
 
   await pool.query(`
@@ -35,6 +47,25 @@ export async function initDb() {
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
+  // Caso a tabela antiga tenha coluna "name", copia para "nome"
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'usuarios'
+        AND column_name = 'name'
+      ) THEN
+        UPDATE usuarios
+        SET nome = COALESCE(nome, name)
+        WHERE nome IS NULL;
+      END IF;
+    END
+    $$;
+  `);
+
+  // CATEGORIAS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS categorias (
       id SERIAL PRIMARY KEY,
@@ -44,6 +75,7 @@ export async function initDb() {
     );
   `);
 
+  // PRODUTOS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS produtos (
       id SERIAL PRIMARY KEY,
@@ -70,6 +102,7 @@ export async function initDb() {
     ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'Sem categoria';
   `);
 
+  // CLIENTES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clientes (
       id SERIAL PRIMARY KEY,
@@ -80,6 +113,7 @@ export async function initDb() {
     );
   `);
 
+  // FORNECEDORES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fornecedores (
       id SERIAL PRIMARY KEY,
@@ -91,6 +125,7 @@ export async function initDb() {
     );
   `);
 
+  // MARCAS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS marcas (
       id SERIAL PRIMARY KEY,
@@ -100,6 +135,7 @@ export async function initDb() {
     );
   `);
 
+  // MOVIMENTAÇÕES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS movimentacoes (
       id SERIAL PRIMARY KEY,
@@ -111,6 +147,7 @@ export async function initDb() {
     );
   `);
 
+  // VENDAS LEGADO
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
@@ -128,6 +165,7 @@ export async function initDb() {
     ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
 
+  // PEDIDOS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos (
       id SERIAL PRIMARY KEY,
@@ -146,6 +184,7 @@ export async function initDb() {
     );
   `);
 
+  // ITENS DO PEDIDO
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedido_itens (
       id SERIAL PRIMARY KEY,
@@ -159,6 +198,7 @@ export async function initDb() {
     );
   `);
 
+  // CUPONS CASHBACK
   await pool.query(`
     CREATE TABLE IF NOT EXISTS cupons_cashback (
       id SERIAL PRIMARY KEY,
@@ -174,6 +214,7 @@ export async function initDb() {
     );
   `);
 
+  // FINANCEIRO
   await pool.query(`
     CREATE TABLE IF NOT EXISTS financeiro (
       id SERIAL PRIMARY KEY,
@@ -185,6 +226,7 @@ export async function initDb() {
     );
   `);
 
+  // CONFIGURAÇÕES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS configuracoes (
       id SERIAL PRIMARY KEY,
@@ -196,6 +238,7 @@ export async function initDb() {
     );
   `);
 
+  // GARANTE SEU ADMIN
   const adminEmail = "lucasmtdap@gmail.com";
 
   await pool.query(
