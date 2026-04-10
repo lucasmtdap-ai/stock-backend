@@ -102,4 +102,39 @@ router.put("/admin/:id", authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// ALTERAR PLANO
+router.put("/plano/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { plano } = req.body;
+
+    const planosPermitidos = ["basico", "premium"];
+
+    if (!plano || !planosPermitidos.includes(String(plano).toLowerCase())) {
+      return res.status(400).json({ error: "Plano inválido" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE usuarios
+      SET plano = $1
+      WHERE id = $2
+      RETURNING id, nome, email, plano
+      `,
+      [String(plano).toLowerCase(), Number(req.params.id)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    res.json({
+      message: "Plano alterado com sucesso",
+      usuario: result.rows[0]
+    });
+  } catch (err) {
+    console.error("Erro ao alterar plano:", err);
+    res.status(500).json({ error: "Erro ao alterar plano" });
+  }
+});
+
 export default router;
