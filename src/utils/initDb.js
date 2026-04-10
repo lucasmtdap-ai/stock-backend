@@ -91,23 +91,23 @@ export async function initDB() {
 
   // 🔥 CASHBACK (CORRIGIDO)
   await pool.query(`
-    DROP TABLE IF EXISTS cupons_cashback;
-  `);
+  DROP TABLE IF EXISTS cupons_cashback;
+`);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS cupons_cashback (
-      id SERIAL PRIMARY KEY,
-      venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
-      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-      codigo TEXT NOT NULL UNIQUE,
-      percentual NUMERIC DEFAULT 0,
-      valor NUMERIC DEFAULT 0,
-      status TEXT DEFAULT 'pendente',
-      valido_a_partir_de TIMESTAMP NOT NULL,
-      usado_em TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS cupons_cashback (
+    id SERIAL PRIMARY KEY,
+    venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+    cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+    codigo TEXT NOT NULL UNIQUE,
+    percentual NUMERIC NOT NULL DEFAULT 0,
+    valor NUMERIC NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    valido_a_partir_de TIMESTAMP NOT NULL,
+    usado_em TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`);
 
   console.log("✅ Banco inicializado com sucesso");
 }
