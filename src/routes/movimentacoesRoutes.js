@@ -1,14 +1,17 @@
 import express from "express";
 import { pool } from "../config/db.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// LISTAR MOVIMENTAÇÕES
-router.get("/", async (req, res) => {
+// LISTAR MOVIMENTAÇÕES DO USUÁRIO LOGADO
+router.get("/", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT
+    const result = await pool.query(
+      `
+      SELECT 
         m.id,
+        m.usuario_id,
         m.produto_id,
         p.nome AS produto_nome,
         m.tipo,
@@ -17,8 +20,11 @@ router.get("/", async (req, res) => {
         m.created_at
       FROM movimentacoes m
       JOIN produtos p ON p.id = m.produto_id
-      ORDER BY m.id DESC
-    `);
+      WHERE m.usuario_id = $1
+      ORDER BY m.created_at DESC
+      `,
+      [req.user.id]
+    );
 
     res.json(result.rows);
   } catch (err) {
@@ -27,33 +33,35 @@ router.get("/", async (req, res) => {
   }
 });
 
-// REGISTRAR MOVIMENTAÇÃO
-router.post("/", async (req, res) => {
-  const client = await pool.connect();
-
+// REGISTRAR MOVIMENTAÇÃO (ENTRADA / SAÍDA)
+router.post("/", authMiddleware, async (req, res) => {
   try {
-    const { produtoId, tipo, quantidade, motivo } = req.body;
+    const { produto_id, tipo, quantidade, motivo } = req.body;
 
-    if (!produtoId || !tipo || !quantidade || Number(quantidade) <= 0) {
-      client.release();
-      return res.status(400).json({ error: "Produto, tipo e quantidade são obrigatórios" });
+    if (!produto_id || !tipo || !quantidade) {
+      return res.status(400).json({
+        error: "Produto, tipo e quantidade são obrigatórios"
+      });
     }
 
-    if (tipo !== "entrada" && tipo !== "saida") {
-      client.release();
-      return res.status(400).json({ error: "Tipo deve ser entrada ou saida" });
+    if (!["entrada", "saida"].includes(tipo)) {
+      return res.status(400).json({
+        error: "Tipo inválido (entrada ou saida)"
+      });
     }
 
-    await client.query("BEGIN");
-
-    const produtoResult = await client.query(
-      "SELECT id, nome, estoque FROM produtos WHERE id = $1 FOR UPDATE",
-      [Number(produtoId)]
+    // pega o produto do usuário
+    const produtoResult = await pool.query(
+      `
+      SELECT id, estoque
+      FROM produtos
+      WHERE id = $1
+        AND usuario_id = $2
+      `,
+      [Number(produto_id), req.user.id]
     );
 
     if (produtoResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      client.release();
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
@@ -65,39 +73,44 @@ router.post("/", async (req, res) => {
 
     if (tipo === "entrada") {
       novoEstoque = estoqueAtual + qtd;
-    }
-
-    if (tipo === "saida") {
+    } else {
       if (estoqueAtual < qtd) {
-        await client.query("ROLLBACK");
-        client.release();
-        return res.status(400).json({ error: "Estoque insuficiente para saída" });
+        return res.status(400).json({
+          error: "Estoque insuficiente"
+        });
       }
-
       novoEstoque = estoqueAtual - qtd;
     }
 
-    await client.query(
-      "UPDATE produtos SET estoque = $1 WHERE id = $2",
-      [novoEstoque, produto.id]
+    // atualiza estoque
+    await pool.query(
+      `
+      UPDATE produtos
+      SET estoque = $1
+      WHERE id = $2
+        AND usuario_id = $3
+      `,
+      [novoEstoque, produto.id, req.user.id]
     );
 
-    const movimentoResult = await client.query(
+    // registra movimentação
+    const result = await pool.query(
       `
-      INSERT INTO movimentacoes (produto_id, tipo, quantidade, motivo)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO movimentacoes (usuario_id, produto_id, tipo, quantidade, motivo)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
-      [produto.id, tipo, qtd, motivo || ""]
+      [
+        req.user.id,
+        produto.id,
+        tipo,
+        qtd,
+        String(motivo || "").trim()
+      ]
     );
 
-    await client.query("COMMIT");
-    client.release();
-
-    res.status(201).json(movimentoResult.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    await client.query("ROLLBACK");
-    client.release();
     console.error("Erro ao registrar movimentação:", err);
     res.status(500).json({ error: "Erro ao registrar movimentação" });
   }
