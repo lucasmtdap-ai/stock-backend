@@ -1,13 +1,20 @@
 import express from "express";
 import { pool } from "../config/db.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// LISTAR MARCAS
-router.get("/", async (req, res) => {
+// LISTAR MARCAS DO USUÁRIO LOGADO
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM marcas ORDER BY id DESC"
+      `
+      SELECT id, usuario_id, nome, descricao, created_at
+      FROM marcas
+      WHERE usuario_id = $1
+      ORDER BY id DESC
+      `,
+      [req.user.id]
     );
 
     res.json(result.rows);
@@ -17,22 +24,26 @@ router.get("/", async (req, res) => {
   }
 });
 
-// CADASTRAR MARCA
-router.post("/", async (req, res) => {
+// CADASTRAR MARCA PARA O USUÁRIO LOGADO
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const { nome, descricao } = req.body;
 
-    if (!nome || nome.trim() === "") {
+    if (!nome || String(nome).trim() === "") {
       return res.status(400).json({ error: "Nome é obrigatório" });
     }
 
     const result = await pool.query(
       `
-      INSERT INTO marcas (nome, descricao)
-      VALUES ($1, $2)
-      RETURNING *
+      INSERT INTO marcas (usuario_id, nome, descricao)
+      VALUES ($1, $2, $3)
+      RETURNING id, usuario_id, nome, descricao, created_at
       `,
-      [nome, descricao || ""]
+      [
+        req.user.id,
+        String(nome).trim(),
+        String(descricao || "").trim()
+      ]
     );
 
     res.status(201).json(result.rows[0]);
@@ -42,24 +53,31 @@ router.post("/", async (req, res) => {
   }
 });
 
-// EDITAR MARCA
-router.put("/:id", async (req, res) => {
+// EDITAR MARCA SOMENTE DO USUÁRIO LOGADO
+router.put("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome, descricao } = req.body;
 
-    if (!nome || nome.trim() === "") {
+    if (!nome || String(nome).trim() === "") {
       return res.status(400).json({ error: "Nome é obrigatório" });
     }
 
     const result = await pool.query(
       `
       UPDATE marcas
-      SET nome = $1, descricao = $2
+      SET nome = $1,
+          descricao = $2
       WHERE id = $3
-      RETURNING *
+        AND usuario_id = $4
+      RETURNING id, usuario_id, nome, descricao, created_at
       `,
-      [nome, descricao || "", Number(id)]
+      [
+        String(nome).trim(),
+        String(descricao || "").trim(),
+        Number(id),
+        req.user.id
+      ]
     );
 
     if (result.rows.length === 0) {
@@ -73,12 +91,17 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// EXCLUIR MARCA
-router.delete("/:id", async (req, res) => {
+// EXCLUIR MARCA SOMENTE DO USUÁRIO LOGADO
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "DELETE FROM marcas WHERE id = $1 RETURNING id",
-      [Number(req.params.id)]
+      `
+      DELETE FROM marcas
+      WHERE id = $1
+        AND usuario_id = $2
+      RETURNING id
+      `,
+      [Number(req.params.id), req.user.id]
     );
 
     if (result.rows.length === 0) {
