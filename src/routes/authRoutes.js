@@ -1,209 +1,140 @@
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
 
-export async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      loja TEXT,
-      email TEXT UNIQUE NOT NULL,
-      senha TEXT NOT NULL,
-      plano TEXT NOT NULL DEFAULT 'basico',
-      role TEXT NOT NULL DEFAULT 'user',
-      status TEXT NOT NULL DEFAULT 'ativo',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+const router = express.Router();
+
+router.post("/register", async (req, res) => {
+  try {
+    const { nome, loja, email, senha } = req.body;
+
+    if (!nome || !email || !senha) {
+      return res.status(400).json({
+        error: "Nome, email e senha são obrigatórios"
+      });
+    }
+
+    const nomeLimpo = String(nome).trim();
+    const lojaLimpa = String(loja || "").trim();
+    const emailLimpo = String(email).trim().toLowerCase();
+    const senhaLimpa = String(senha);
+
+    const existe = await pool.query(
+      "SELECT id FROM usuarios WHERE LOWER(email) = $1",
+      [emailLimpo]
     );
-  `);
 
-  await pool.query(`
-    ALTER TABLE usuarios
-    ADD COLUMN IF NOT EXISTS plano TEXT NOT NULL DEFAULT 'basico';
-  `);
+    if (existe.rows.length > 0) {
+      return res.status(400).json({
+        error: "Email já cadastrado"
+      });
+    }
 
-  await pool.query(`
-    ALTER TABLE usuarios
-    ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
-  `);
+    const senhaHash = await bcrypt.hash(senhaLimpa, 10);
 
-  await pool.query(`
-    ALTER TABLE usuarios
-    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
-  `);
-
-  await pool.query(`
-    ALTER TABLE usuarios
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS categorias (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      descricao TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    const result = await pool.query(
+      `
+      INSERT INTO usuarios (nome, loja, email, senha, plano, role, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, nome, loja, email, plano, role, status, created_at
+      `,
+      [nomeLimpo, lojaLimpa, emailLimpo, senhaHash, "basico", "user", "ativo"]
     );
-  `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS produtos (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      preco NUMERIC NOT NULL DEFAULT 0,
-      custo NUMERIC NOT NULL DEFAULT 0,
-      estoque INTEGER NOT NULL DEFAULT 0,
-      categoria TEXT DEFAULT 'Sem categoria'
+    return res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Erro no cadastro:", err);
+
+    if (err.code === "23505") {
+      return res.status(400).json({
+        error: "Email já cadastrado"
+      });
+    }
+
+    return res.status(500).json({
+      error: err.message || "Erro ao cadastrar usuário"
+    });
+  }
+});
+
+router.post("/login", async (req, res) => {
+  try {
+    const { email, senha } = req.body;
+
+    const emailLimpo = String(email || "").trim().toLowerCase();
+
+    const result = await pool.query(
+      "SELECT * FROM usuarios WHERE LOWER(email) = $1",
+      [emailLimpo]
     );
-  `);
 
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS custo NUMERIC NOT NULL DEFAULT 0;
-  `);
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: "Usuário não encontrado" });
+    }
 
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS estoque INTEGER NOT NULL DEFAULT 0;
-  `);
+    const usuario = result.rows[0];
 
-  await pool.query(`
-    ALTER TABLE produtos
-    ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'Sem categoria';
-  `);
+    const senhaCorreta = await bcrypt.compare(String(senha || ""), usuario.senha);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS clientes (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      telefone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    if (!senhaCorreta) {
+      return res.status(400).json({ error: "Senha incorreta" });
+    }
+
+    if ((usuario.status || "ativo") === "pausado") {
+      return res.status(403).json({
+        error: "Sua conta está pausada. Entre em contato com o administrador."
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: usuario.id,
+        email: usuario.email,
+        role: usuario.role || "user"
+      },
+      process.env.JWT_SECRET || "segredo_dev",
+      { expiresIn: "7d" }
     );
-  `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS fornecedores (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      telefone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      empresa TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
+    return res.json({
+      token,
+      user: {
+        id: usuario.id,
+        nome: usuario.nome,
+        loja: usuario.loja,
+        email: usuario.email,
+        plano: usuario.plano || "basico",
+        role: usuario.role || "user",
+        status: usuario.status || "ativo",
+        created_at: usuario.created_at || null
+      }
+    });
+  } catch (err) {
+    console.error("Erro no login:", err);
+    return res.status(500).json({
+      error: err.message || "Erro ao fazer login"
+    });
+  }
+});
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS marcas (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      descricao TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
+router.get("/upgrade", async (req, res) => {
+  try {
+    await pool.query(`
+      UPDATE usuarios
+      SET plano = 'premium'
+    `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS movimentacoes (
-      id SERIAL PRIMARY KEY,
-      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
-      tipo TEXT NOT NULL,
-      quantidade INTEGER NOT NULL,
-      motivo TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
+    return res.json({
+      ok: true,
+      message: "Todos usuários viraram premium"
+    });
+  } catch (err) {
+    console.error("Erro ao atualizar plano:", err);
+    return res.status(500).json({
+      error: err.message || "Erro ao atualizar plano"
+    });
+  }
+});
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS vendas (
-      id SERIAL PRIMARY KEY,
-      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
-      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-      quantidade INTEGER NOT NULL DEFAULT 1,
-      valor_unitario NUMERIC NOT NULL DEFAULT 0,
-      valor_total NUMERIC NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    ALTER TABLE vendas
-    ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS pedidos (
-      id SERIAL PRIMARY KEY,
-      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-      status TEXT NOT NULL DEFAULT 'aberto',
-      forma_pagamento TEXT DEFAULT '',
-      subtotal NUMERIC NOT NULL DEFAULT 0,
-      desconto_percentual NUMERIC NOT NULL DEFAULT 0,
-      desconto_valor NUMERIC NOT NULL DEFAULT 0,
-      total_final NUMERIC NOT NULL DEFAULT 0,
-      primeira_compra BOOLEAN NOT NULL DEFAULT false,
-      cashback_percentual NUMERIC NOT NULL DEFAULT 0,
-      cashback_valor NUMERIC NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      finalizado_em TIMESTAMP
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS pedido_itens (
-      id SERIAL PRIMARY KEY,
-      pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
-      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
-      nome_produto TEXT NOT NULL,
-      quantidade INTEGER NOT NULL DEFAULT 1,
-      valor_unitario NUMERIC NOT NULL DEFAULT 0,
-      valor_total NUMERIC NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS cupons_cashback (
-      id SERIAL PRIMARY KEY,
-      pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
-      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-      codigo TEXT NOT NULL UNIQUE,
-      percentual NUMERIC NOT NULL DEFAULT 0,
-      valor NUMERIC NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pendente',
-      valido_a_partir_de TIMESTAMP NOT NULL,
-      usado_em TIMESTAMP,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS financeiro (
-      id SERIAL PRIMARY KEY,
-      tipo TEXT NOT NULL,
-      descricao TEXT NOT NULL,
-      valor NUMERIC NOT NULL DEFAULT 0,
-      categoria TEXT DEFAULT 'Geral',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS configuracoes (
-      id SERIAL PRIMARY KEY,
-      nome_loja TEXT DEFAULT '',
-      telefone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      rodape TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  const adminEmail = "lucasmtdap@gmail.com";
-
-  await pool.query(
-    `
-    UPDATE usuarios
-    SET role = 'admin', status = 'ativo'
-    WHERE LOWER(email) = LOWER($1)
-    `,
-    [adminEmail]
-  );
-}
+export default router;
