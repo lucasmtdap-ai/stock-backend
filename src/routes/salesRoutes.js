@@ -19,34 +19,13 @@ function amanhaIso() {
 function calcularCashback(totalFinal) {
   const total = Number(totalFinal || 0);
 
-  if (total >= 199.9) {
-    return {
-      percentual: 15,
-      valor: Number((total * 0.15).toFixed(2))
-    };
-  }
+  if (total >= 199.9) return { percentual: 15, valor: Number((total * 0.15).toFixed(2)) };
+  if (total >= 100) return { percentual: 10, valor: Number((total * 0.1).toFixed(2)) };
+  if (total >= 50) return { percentual: 5, valor: Number((total * 0.05).toFixed(2)) };
 
-  if (total >= 100) {
-    return {
-      percentual: 10,
-      valor: Number((total * 0.1).toFixed(2))
-    };
-  }
-
-  if (total >= 50) {
-    return {
-      percentual: 5,
-      valor: Number((total * 0.05).toFixed(2))
-    };
-  }
-
-  return {
-    percentual: 0,
-    valor: 0
-  };
+  return { percentual: 0, valor: 0 };
 }
 
-// LISTAR VENDAS
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -78,7 +57,6 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// FINALIZAR VENDA PDV
 router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
   const client = await pool.connect();
 
@@ -98,12 +76,11 @@ router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
 
     if (!Array.isArray(itens) || itens.length === 0) {
       client.release();
-      return res.status(400).json({ error: "Adicione produtos ao carrinho" });
+      return res.status(400).json({ error: "Carrinho vazio" });
     }
 
     const formasValidas = ["dinheiro", "pix", "debito", "credito"];
-
-    if (!formaPagamento || !formasValidas.includes(formaPagamento)) {
+    if (!formasValidas.includes(String(formaPagamento || "").toLowerCase())) {
       client.release();
       return res.status(400).json({ error: "Forma de pagamento inválida" });
     }
@@ -139,6 +116,7 @@ router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
     const primeiraCompra = Number(historico.rows[0]?.total || 0) === 0;
 
     let subtotal = 0;
+    let ultimaVenda = null;
     const itensProcessados = [];
 
     for (const item of itens) {
@@ -230,6 +208,12 @@ router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
         return res.status(400).json({ error: "Cupom cashback já foi usado" });
       }
 
+      if (Number(cupom.cliente_id) !== Number(clienteId)) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(400).json({ error: "Esse cupom pertence a outro cliente" });
+      }
+
       const agora = new Date();
       const validoAPartir = new Date(cupom.valido_a_partir_de);
 
@@ -239,27 +223,13 @@ router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
         return res.status(400).json({ error: "Cupom ainda não está válido" });
       }
 
-      if (Number(cupom.cliente_id) !== Number(clienteId)) {
-        await client.query("ROLLBACK");
-        client.release();
-        return res.status(400).json({ error: "Esse cupom pertence a outro cliente" });
-      }
-
       descontoCashbackValor = Number(cupom.valor || 0);
-
-      if (descontoCashbackValor > subtotal - descontoPrimeiraCompraValor) {
-        descontoCashbackValor = Number((subtotal - descontoPrimeiraCompraValor).toFixed(2));
-      }
-
       cupomUsado = cupom;
     }
 
     const descontoValor = Number((descontoPrimeiraCompraValor + descontoCashbackValor).toFixed(2));
     const totalFinal = Number((subtotal - descontoValor).toFixed(2));
-
     const cashbackGerado = calcularCashback(totalFinal);
-
-    let ultimaVenda = null;
 
     for (const item of itensProcessados) {
       const vendaResult = await client.query(
