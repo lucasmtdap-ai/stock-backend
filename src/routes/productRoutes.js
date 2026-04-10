@@ -9,7 +9,16 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
       `
-      SELECT id, usuario_id, nome, preco, custo, estoque, categoria
+      SELECT
+        id,
+        usuario_id,
+        nome,
+        preco,
+        custo,
+        estoque,
+        categoria,
+        marca,
+        fornecedor
       FROM produtos
       WHERE usuario_id = $1
       ORDER BY id DESC
@@ -24,27 +33,50 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// CADASTRAR PRODUTO PARA O USUÁRIO LOGADO
+// CADASTRAR PRODUTO
 router.post("/", authMiddleware, async (req, res) => {
   try {
-    const { nome, preco, custo, estoque, categoria } = req.body;
+    const {
+      nome,
+      preco,
+      custo,
+      estoque,
+      categoria,
+      marca,
+      fornecedor
+    } = req.body;
 
-    if (!nome || preco === undefined || preco === null || preco === "") {
-      return res.status(400).json({
-        error: "Nome e preço são obrigatórios"
-      });
+    if (!nome || String(nome).trim() === "") {
+      return res.status(400).json({ error: "Nome é obrigatório" });
     }
 
-    const categoriaFinal =
-      categoria && String(categoria).trim() !== ""
-        ? String(categoria).trim()
-        : "Sem categoria";
+    if (preco === undefined || preco === null || preco === "") {
+      return res.status(400).json({ error: "Preço é obrigatório" });
+    }
 
     const result = await pool.query(
       `
-      INSERT INTO produtos (usuario_id, nome, preco, custo, estoque, categoria)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, usuario_id, nome, preco, custo, estoque, categoria
+      INSERT INTO produtos (
+        usuario_id,
+        nome,
+        preco,
+        custo,
+        estoque,
+        categoria,
+        marca,
+        fornecedor
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING
+        id,
+        usuario_id,
+        nome,
+        preco,
+        custo,
+        estoque,
+        categoria,
+        marca,
+        fornecedor
       `,
       [
         req.user.id,
@@ -52,7 +84,9 @@ router.post("/", authMiddleware, async (req, res) => {
         Number(preco),
         Number(custo || 0),
         Number(estoque || 0),
-        categoriaFinal
+        String(categoria || "Sem categoria").trim(),
+        String(marca || "Sem marca").trim(),
+        String(fornecedor || "Sem fornecedor").trim()
       ]
     );
 
@@ -63,41 +97,60 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// EDITAR PRODUTO SOMENTE DO USUÁRIO LOGADO
+// EDITAR PRODUTO
 router.put("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, preco, custo, estoque, categoria } = req.body;
+    const {
+      nome,
+      preco,
+      custo,
+      estoque,
+      categoria,
+      marca,
+      fornecedor
+    } = req.body;
 
-    if (!nome || preco === undefined || preco === null || preco === "") {
-      return res.status(400).json({
-        error: "Nome e preço são obrigatórios"
-      });
+    if (!nome || String(nome).trim() === "") {
+      return res.status(400).json({ error: "Nome é obrigatório" });
     }
 
-    const categoriaFinal =
-      categoria && String(categoria).trim() !== ""
-        ? String(categoria).trim()
-        : "Sem categoria";
+    if (preco === undefined || preco === null || preco === "") {
+      return res.status(400).json({ error: "Preço é obrigatório" });
+    }
 
     const result = await pool.query(
       `
       UPDATE produtos
-      SET nome = $1,
-          preco = $2,
-          custo = $3,
-          estoque = $4,
-          categoria = $5
-      WHERE id = $6
-        AND usuario_id = $7
-      RETURNING id, usuario_id, nome, preco, custo, estoque, categoria
+      SET
+        nome = $1,
+        preco = $2,
+        custo = $3,
+        estoque = $4,
+        categoria = $5,
+        marca = $6,
+        fornecedor = $7
+      WHERE id = $8
+        AND usuario_id = $9
+      RETURNING
+        id,
+        usuario_id,
+        nome,
+        preco,
+        custo,
+        estoque,
+        categoria,
+        marca,
+        fornecedor
       `,
       [
         String(nome).trim(),
         Number(preco),
         Number(custo || 0),
         Number(estoque || 0),
-        categoriaFinal,
+        String(categoria || "Sem categoria").trim(),
+        String(marca || "Sem marca").trim(),
+        String(fornecedor || "Sem fornecedor").trim(),
         Number(id),
         req.user.id
       ]
@@ -114,7 +167,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// EXCLUIR PRODUTO SOMENTE DO USUÁRIO LOGADO
+// EXCLUIR PRODUTO
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
