@@ -1,5 +1,6 @@
 import express from "express";
 import { pool } from "../config/db.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -21,14 +22,14 @@ function calcularCashback(totalFinal) {
   if (total >= 100) {
     return {
       percentual: 10,
-      valor: Number((total * 0.10).toFixed(2))
+      valor: Number((total * 0.1).toFixed(2))
     };
   }
 
   return {
     percentual: 5,
     valor: Number((total * 0.05).toFixed(2))
-  };
+    };
 }
 
 function amanhaIso() {
@@ -38,20 +39,18 @@ function amanhaIso() {
   return d.toISOString();
 }
 
-// LISTAR VENDAS
-router.get("/", async (req, res) => {
+// LISTAR VENDAS DO USUÁRIO LOGADO
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const filtros = [];
-    const valores = [];
+    const valores = [req.user.id];
+    let whereExtra = "";
 
     if (inicio && fim) {
-      filtros.push(`origem.created_at BETWEEN $1 AND $2`);
       valores.push(inicio, fim);
+      whereExtra = ` AND origem.created_at BETWEEN $2 AND $3`;
     }
-
-    const where = filtros.length ? `WHERE ${filtros.join(" AND ")}` : "";
 
     const query = `
       SELECT *
@@ -76,7 +75,8 @@ router.get("/", async (req, res) => {
         FROM pedidos ped
         JOIN pedido_itens pi ON pi.pedido_id = ped.id
         LEFT JOIN clientes c ON c.id = ped.cliente_id
-        WHERE ped.status = 'finalizado'
+        WHERE ped.usuario_id = $1
+          AND ped.status = 'finalizado'
 
         UNION ALL
 
@@ -100,8 +100,10 @@ router.get("/", async (req, res) => {
         FROM vendas v
         JOIN produtos p ON p.id = v.produto_id
         LEFT JOIN clientes c ON c.id = v.cliente_id
+        WHERE v.usuario_id = $1
       ) AS origem
-      ${where}
+      WHERE 1=1
+      ${whereExtra}
       ORDER BY origem.created_at DESC
     `;
 
@@ -118,7 +120,7 @@ router.get("/", async (req, res) => {
       vendas,
       resumo: {
         totalVendas,
-        totalValor
+        totalValor: Number(totalValor.toFixed(2))
       }
     });
   } catch (err) {
@@ -127,8 +129,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// VALIDAR CUPOM CASHBACK
-router.get("/cashback/:codigo", async (req, res) => {
+// VALIDAR CUPOM CASHBACK DO USUÁRIO LOGADO
+router.get("/cashback/:codigo", authMiddleware, async (req, res) => {
   try {
     const codigo = String(req.params.codigo || "").trim().toUpperCase();
 
@@ -140,13 +142,16 @@ router.get("/cashback/:codigo", async (req, res) => {
       `
       SELECT
         cc.*,
-        c.nome AS cliente_nome
+        c.nome AS cliente_nome,
+        ped.usuario_id
       FROM cupons_cashback cc
+      JOIN pedidos ped ON ped.id = cc.pedido_id
       LEFT JOIN clientes c ON c.id = cc.cliente_id
       WHERE UPPER(cc.codigo) = $1
+        AND ped.usuario_id = $2
       LIMIT 1
       `,
-      [codigo]
+      [codigo, req.user.id]
     );
 
     if (result.rows.length === 0) {
@@ -183,8 +188,8 @@ router.get("/cashback/:codigo", async (req, res) => {
   }
 });
 
-// FINALIZAR VENDA PDV COM OU SEM CASHBACK
-router.post("/pdv/finalizar", async (req, res) => {
+// FINALIZAR VENDA PDV
+router.post("/pdv/finalizar", authMiddleware, async (req, res) => {
   const client = await pool.connect();
 
   try {
@@ -223,8 +228,13 @@ router.post("/pdv/finalizar", async (req, res) => {
 
     if (clienteId) {
       const clienteResult = await client.query(
-        "SELECT id, nome FROM clientes WHERE id = $1",
-        [Number(clienteId)]
+        `
+        SELECT id, nome
+        FROM clientes
+        WHERE id = $1
+          AND usuario_id = $2
+        `,
+        [Number(clienteId), req.user.id]
       );
 
       if (clienteResult.rows.length === 0) {
@@ -236,13 +246,24 @@ router.post("/pdv/finalizar", async (req, res) => {
       clienteIdFinal = Number(clienteId);
 
       const historicoPedidos = await client.query(
-        "SELECT COUNT(*)::int AS total FROM pedidos WHERE cliente_id = $1 AND status = 'finalizado'",
-        [clienteIdFinal]
+        `
+        SELECT COUNT(*)::int AS total
+        FROM pedidos
+        WHERE cliente_id = $1
+          AND usuario_id = $2
+          AND status = 'finalizado'
+        `,
+        [clienteIdFinal, req.user.id]
       );
 
       const historicoLegacy = await client.query(
-        "SELECT COUNT(*)::int AS total FROM vendas WHERE cliente_id = $1",
-        [clienteIdFinal]
+        `
+        SELECT COUNT(*)::int AS total
+        FROM vendas
+        WHERE cliente_id = $1
+          AND usuario_id = $2
+        `,
+        [clienteIdFinal, req.user.id]
       );
 
       const totalComprasAnteriores =
@@ -282,8 +303,14 @@ router.post("/pdv/finalizar", async (req, res) => {
       }
 
       const produtoResult = await client.query(
-        "SELECT id, nome, preco, estoque FROM produtos WHERE id = $1 FOR UPDATE",
-        [produtoId]
+        `
+        SELECT id, nome, preco, estoque
+        FROM produtos
+        WHERE id = $1
+          AND usuario_id = $2
+        FOR UPDATE
+        `,
+        [produtoId, req.user.id]
       );
 
       if (produtoResult.rows.length === 0) {
@@ -333,13 +360,15 @@ router.post("/pdv/finalizar", async (req, res) => {
 
       const cashbackResult = await client.query(
         `
-        SELECT *
-        FROM cupons_cashback
-        WHERE UPPER(codigo) = $1
+        SELECT cc.*
+        FROM cupons_cashback cc
+        JOIN pedidos ped ON ped.id = cc.pedido_id
+        WHERE UPPER(cc.codigo) = $1
+          AND ped.usuario_id = $2
         LIMIT 1
         FOR UPDATE
         `,
-        [codigo]
+        [codigo, req.user.id]
       );
 
       if (cashbackResult.rows.length === 0) {
@@ -405,6 +434,7 @@ router.post("/pdv/finalizar", async (req, res) => {
     const pedidoResult = await client.query(
       `
       INSERT INTO pedidos (
+        usuario_id,
         cliente_id,
         status,
         forma_pagamento,
@@ -417,10 +447,11 @@ router.post("/pdv/finalizar", async (req, res) => {
         cashback_valor,
         finalizado_em
       )
-      VALUES ($1, 'finalizado', $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      VALUES ($1, $2, 'finalizado', $3, $4, $5, $6, $7, $8, $9, $10, NOW())
       RETURNING *
       `,
       [
+        req.user.id,
         clienteIdFinal,
         formaPagamento,
         subtotal,
@@ -459,25 +490,31 @@ router.post("/pdv/finalizar", async (req, res) => {
       );
 
       await client.query(
-        "UPDATE produtos SET estoque = $1 WHERE id = $2",
-        [item.novoEstoque, item.produtoId]
+        `
+        UPDATE produtos
+        SET estoque = $1
+        WHERE id = $2
+          AND usuario_id = $3
+        `,
+        [item.novoEstoque, item.produtoId, req.user.id]
       );
 
       await client.query(
         `
-        INSERT INTO movimentacoes (produto_id, tipo, quantidade, motivo)
-        VALUES ($1, 'saida', $2, $3)
+        INSERT INTO movimentacoes (usuario_id, produto_id, tipo, quantidade, motivo)
+        VALUES ($1, $2, 'saida', $3, $4)
         `,
-        [item.produtoId, item.quantidade, `Venda PDV #${pedido.id}`]
+        [req.user.id, item.produtoId, item.quantidade, `Venda PDV #${pedido.id}`]
       );
     }
 
     await client.query(
       `
-      INSERT INTO financeiro (tipo, descricao, valor, categoria)
-      VALUES ('entrada', $1, $2, $3)
+      INSERT INTO financeiro (usuario_id, tipo, descricao, valor, categoria)
+      VALUES ($1, 'entrada', $2, $3, $4)
       `,
       [
+        req.user.id,
         `Venda PDV #${pedido.id} - ${formaPagamento}`,
         totalFinal,
         `Vendas/${formaPagamento}`
