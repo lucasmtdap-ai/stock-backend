@@ -19,9 +19,17 @@ function amanhaIso() {
 function calcularCashback(totalFinal) {
   const total = Number(totalFinal || 0);
 
-  if (total >= 199.9) return { percentual: 15, valor: Number((total * 0.15).toFixed(2)) };
-  if (total >= 100) return { percentual: 10, valor: Number((total * 0.1).toFixed(2)) };
-  if (total >= 50) return { percentual: 5, valor: Number((total * 0.05).toFixed(2)) };
+  if (total >= 199.9) {
+    return { percentual: 15, valor: Number((total * 0.15).toFixed(2)) };
+  }
+
+  if (total >= 100) {
+    return { percentual: 10, valor: Number((total * 0.1).toFixed(2)) };
+  }
+
+  if (total >= 50) {
+    return { percentual: 5, valor: Number((total * 0.05).toFixed(2)) };
+  }
 
   return { percentual: 0, valor: 0 };
 }
