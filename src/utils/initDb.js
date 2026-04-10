@@ -10,6 +10,7 @@ export async function initDb() {
       senha TEXT NOT NULL,
       plano TEXT NOT NULL DEFAULT 'basico',
       role TEXT NOT NULL DEFAULT 'user',
+      status TEXT NOT NULL DEFAULT 'ativo',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
@@ -22,6 +23,11 @@ export async function initDb() {
   await pool.query(`
     ALTER TABLE usuarios
     ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
   `);
 
   await pool.query(`
@@ -105,10 +111,6 @@ export async function initDb() {
     );
   `);
 
-  /*
-    VENDAS ANTIGAS
-    Mantemos para não quebrar histórico antigo
-  */
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
@@ -126,9 +128,6 @@ export async function initDb() {
     ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
 
-  /*
-    NOVO PDV
-  */
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos (
       id SERIAL PRIMARY KEY,
@@ -202,7 +201,7 @@ export async function initDb() {
   await pool.query(
     `
     UPDATE usuarios
-    SET role = 'admin'
+    SET role = 'admin', status = 'ativo'
     WHERE email = $1
     `,
     [adminEmail]
