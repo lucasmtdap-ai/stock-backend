@@ -1,13 +1,20 @@
 import express from "express";
 import { pool } from "../config/db.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// LISTAR MOVIMENTOS + RESUMO
-router.get("/", async (req, res) => {
+// LISTAR FINANCEIRO DO USUÁRIO LOGADO
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM financeiro ORDER BY id DESC"
+      `
+      SELECT *
+      FROM financeiro
+      WHERE usuario_id = $1
+      ORDER BY id DESC
+      `,
+      [req.user.id]
     );
 
     const movimentos = result.rows.map((m) => ({
@@ -38,10 +45,21 @@ router.get("/", async (req, res) => {
 
       const categoria = String(m.categoria || "").toLowerCase();
 
-      if (categoria === "vendas/dinheiro") entradasPorPagamento.dinheiro += Number(m.valor || 0);
-      if (categoria === "vendas/pix") entradasPorPagamento.pix += Number(m.valor || 0);
-      if (categoria === "vendas/debito") entradasPorPagamento.debito += Number(m.valor || 0);
-      if (categoria === "vendas/credito") entradasPorPagamento.credito += Number(m.valor || 0);
+      if (categoria === "vendas/dinheiro") {
+        entradasPorPagamento.dinheiro += Number(m.valor || 0);
+      }
+
+      if (categoria === "vendas/pix") {
+        entradasPorPagamento.pix += Number(m.valor || 0);
+      }
+
+      if (categoria === "vendas/debito") {
+        entradasPorPagamento.debito += Number(m.valor || 0);
+      }
+
+      if (categoria === "vendas/credito") {
+        entradasPorPagamento.credito += Number(m.valor || 0);
+      }
     });
 
     res.json({
@@ -64,42 +82,65 @@ router.get("/", async (req, res) => {
   }
 });
 
-// CADASTRAR MOVIMENTO MANUAL
-router.post("/", async (req, res) => {
+// CADASTRAR MOVIMENTO MANUAL PARA O USUÁRIO LOGADO
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const { tipo, descricao, valor, categoria } = req.body;
 
-    if (!tipo || !descricao || !valor) {
+    if (!tipo || !descricao || valor === undefined || valor === null || valor === "") {
       return res.status(400).json({ error: "Campos obrigatórios" });
+    }
+
+    if (!["entrada", "saida"].includes(tipo)) {
+      return res.status(400).json({ error: "Tipo inválido" });
     }
 
     const result = await pool.query(
       `
-      INSERT INTO financeiro (tipo, descricao, valor, categoria)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO financeiro (usuario_id, tipo, descricao, valor, categoria)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
-      [tipo, descricao, Number(valor), categoria || "Geral"]
+      [
+        req.user.id,
+        String(tipo).trim(),
+        String(descricao).trim(),
+        Number(valor),
+        String(categoria || "Geral").trim()
+      ]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({
+      ...result.rows[0],
+      valor: Number(result.rows[0].valor || 0)
+    });
   } catch (err) {
     console.error("Erro ao cadastrar financeiro:", err);
-    res.status(500).json({ error: "Erro ao cadastrar" });
+    res.status(500).json({ error: "Erro ao cadastrar movimento" });
   }
 });
 
-// EXCLUIR MOVIMENTO
-router.delete("/:id", async (req, res) => {
+// EXCLUIR MOVIMENTO SOMENTE DO USUÁRIO LOGADO
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    await pool.query("DELETE FROM financeiro WHERE id=$1", [
-      Number(req.params.id)
-    ]);
+    const result = await pool.query(
+      `
+      DELETE FROM financeiro
+      WHERE id = $1
+        AND usuario_id = $2
+      RETURNING id
+      `,
+      [Number(req.params.id), req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Movimento não encontrado" });
+    }
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Erro ao excluir:", err);
-    res.status(500).json({ error: "Erro ao excluir" });
+    console.error("Erro ao excluir movimento:", err);
+    res.status(500).json({ error: "Erro ao excluir movimento" });
   }
 });
 
