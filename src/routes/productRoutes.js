@@ -3,11 +3,17 @@ import { pool } from "../config/db.js";
 
 const router = express.Router();
 
+// LISTAR PRODUTOS
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, nome, preco, custo, estoque, categoria FROM produtos ORDER BY id DESC"
+      `
+      SELECT id, nome, preco, custo, estoque, categoria
+      FROM produtos
+      ORDER BY id DESC
+      `
     );
+
     res.json(result.rows);
   } catch (err) {
     console.error("Erro ao buscar produtos:", err);
@@ -15,22 +21,34 @@ router.get("/", async (req, res) => {
   }
 });
 
+// CADASTRAR PRODUTO
 router.post("/", async (req, res) => {
   try {
     const { nome, preco, custo, estoque, categoria } = req.body;
 
     if (!nome || preco === undefined || preco === null || preco === "") {
-      return res.status(400).json({ error: "Nome e preço são obrigatórios" });
+      return res.status(400).json({
+        error: "Nome e preço são obrigatórios"
+      });
     }
 
+    const categoriaFinal =
+      categoria && String(categoria).trim() !== ""
+        ? String(categoria).trim()
+        : "Sem categoria";
+
     const result = await pool.query(
-      "INSERT INTO produtos (nome, preco, custo, estoque, categoria) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, preco, custo, estoque, categoria",
+      `
+      INSERT INTO produtos (nome, preco, custo, estoque, categoria)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, nome, preco, custo, estoque, categoria
+      `,
       [
         nome,
         Number(preco),
         Number(custo || 0),
         Number(estoque || 0),
-        categoria || "Sem categoria"
+        categoriaFinal
       ]
     );
 
@@ -41,23 +59,40 @@ router.post("/", async (req, res) => {
   }
 });
 
+// EDITAR PRODUTO
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { nome, preco, custo, estoque, categoria } = req.body;
 
     if (!nome || preco === undefined || preco === null || preco === "") {
-      return res.status(400).json({ error: "Nome e preço são obrigatórios" });
+      return res.status(400).json({
+        error: "Nome e preço são obrigatórios"
+      });
     }
 
+    const categoriaFinal =
+      categoria && String(categoria).trim() !== ""
+        ? String(categoria).trim()
+        : "Sem categoria";
+
     const result = await pool.query(
-      "UPDATE produtos SET nome = $1, preco = $2, custo = $3, estoque = $4, categoria = $5 WHERE id = $6 RETURNING id, nome, preco, custo, estoque, categoria",
+      `
+      UPDATE produtos
+      SET nome = $1,
+          preco = $2,
+          custo = $3,
+          estoque = $4,
+          categoria = $5
+      WHERE id = $6
+      RETURNING id, nome, preco, custo, estoque, categoria
+      `,
       [
         nome,
         Number(preco),
         Number(custo || 0),
         Number(estoque || 0),
-        categoria || "Sem categoria",
+        categoriaFinal,
         Number(id)
       ]
     );
@@ -73,6 +108,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// EXCLUIR PRODUTO
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
