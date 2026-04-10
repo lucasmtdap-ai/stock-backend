@@ -3,7 +3,6 @@ import { pool } from "../config/db.js";
 
 const router = express.Router();
 
-// LISTAR USUÁRIOS
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -18,6 +17,8 @@ router.get("/", async (req, res) => {
       loja: u.loja || "",
       email: u.email || "",
       plano: u.plano || "basico",
+      role: u.role || "user",
+      status: u.status || "ativo",
       created_at: u.created_at || null
     }));
 
@@ -28,7 +29,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ALTERAR PLANO
 router.put("/:id/plano", async (req, res) => {
   try {
     const { id } = req.params;
@@ -60,6 +60,8 @@ router.put("/:id/plano", async (req, res) => {
       loja: u.loja || "",
       email: u.email || "",
       plano: u.plano || "basico",
+      role: u.role || "user",
+      status: u.status || "ativo",
       created_at: u.created_at || null
     });
   } catch (err) {
@@ -68,7 +70,47 @@ router.put("/:id/plano", async (req, res) => {
   }
 });
 
-// EXCLUIR USUÁRIO
+router.put("/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || (status !== "ativo" && status !== "pausado")) {
+      return res.status(400).json({ error: "Status inválido" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE usuarios
+      SET status = $1
+      WHERE id = $2
+      RETURNING *
+      `,
+      [status, Number(id)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const u = result.rows[0];
+
+    res.json({
+      id: u.id,
+      nome: u.nome || "",
+      loja: u.loja || "",
+      email: u.email || "",
+      plano: u.plano || "basico",
+      role: u.role || "user",
+      status: u.status || "ativo",
+      created_at: u.created_at || null
+    });
+  } catch (err) {
+    console.error("Erro ao alterar status do usuário:", err);
+    res.status(500).json({ error: "Erro ao alterar status do usuário" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
