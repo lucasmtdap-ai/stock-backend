@@ -38,7 +38,7 @@ function amanhaIso() {
   return d.toISOString();
 }
 
-// LISTAR VENDAS (LEGADO + NOVO PDV)
+// LISTAR VENDAS
 router.get("/", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
@@ -69,6 +69,7 @@ router.get("/", async (req, res) => {
           ped.forma_pagamento,
           ped.desconto_percentual,
           ped.desconto_valor,
+          ped.total_final,
           ped.cashback_percentual,
           ped.cashback_valor,
           ped.created_at
@@ -92,6 +93,7 @@ router.get("/", async (req, res) => {
           '' AS forma_pagamento,
           0 AS desconto_percentual,
           0 AS desconto_valor,
+          v.valor_total AS total_final,
           0 AS cashback_percentual,
           0 AS cashback_valor,
           v.created_at
@@ -108,7 +110,7 @@ router.get("/", async (req, res) => {
 
     const totalVendas = vendas.length;
     const totalValor = vendas.reduce(
-      (acc, v) => acc + Number(v.valor_total || 0),
+      (acc, v) => acc + Number(v.total_final || v.valor_total || 0),
       0
     );
 
@@ -125,7 +127,63 @@ router.get("/", async (req, res) => {
   }
 });
 
-// FINALIZAR VENDA NO NOVO PDV
+// VALIDAR CUPOM CASHBACK
+router.get("/cashback/:codigo", async (req, res) => {
+  try {
+    const codigo = String(req.params.codigo || "").trim().toUpperCase();
+
+    if (!codigo) {
+      return res.status(400).json({ error: "Código inválido" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        cc.*,
+        c.nome AS cliente_nome
+      FROM cupons_cashback cc
+      LEFT JOIN clientes c ON c.id = cc.cliente_id
+      WHERE UPPER(cc.codigo) = $1
+      LIMIT 1
+      `,
+      [codigo]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Cupom não encontrado" });
+    }
+
+    const cupom = result.rows[0];
+    const agora = new Date();
+    const validoAPartir = new Date(cupom.valido_a_partir_de);
+
+    if (cupom.status === "usado") {
+      return res.status(400).json({ error: "Cupom já foi usado" });
+    }
+
+    if (agora < validoAPartir) {
+      return res.status(400).json({
+        error: `Cupom ainda não está válido. Use a partir de ${validoAPartir.toLocaleDateString("pt-BR")}`
+      });
+    }
+
+    res.json({
+      id: cupom.id,
+      codigo: cupom.codigo,
+      cliente_id: cupom.cliente_id,
+      cliente_nome: cupom.cliente_nome || "Sem cliente",
+      percentual: Number(cupom.percentual || 0),
+      valor: Number(cupom.valor || 0),
+      status: cupom.status,
+      valido_a_partir_de: cupom.valido_a_partir_de
+    });
+  } catch (err) {
+    console.error("Erro ao validar cashback:", err);
+    res.status(500).json({ error: "Erro ao validar cashback" });
+  }
+});
+
+// FINALIZAR VENDA PDV COM OU SEM CASHBACK
 router.post("/pdv/finalizar", async (req, res) => {
   const client = await pool.connect();
 
@@ -134,7 +192,8 @@ router.post("/pdv/finalizar", async (req, res) => {
       clienteId,
       itens,
       formaPagamento,
-      descontoPrimeiraCompra
+      descontoPrimeiraCompra,
+      codigoCashback
     } = req.body;
 
     if (!Array.isArray(itens) || itens.length === 0) {
@@ -142,12 +201,7 @@ router.post("/pdv/finalizar", async (req, res) => {
       return res.status(400).json({ error: "Adicione pelo menos um item à venda" });
     }
 
-    const formasValidas = [
-      "dinheiro",
-      "pix",
-      "debito",
-      "credito"
-    ];
+    const formasValidas = ["dinheiro", "pix", "debito", "credito"];
 
     if (!formaPagamento || !formasValidas.includes(formaPagamento)) {
       client.release();
@@ -267,10 +321,86 @@ router.post("/pdv/finalizar", async (req, res) => {
     subtotal = Number(subtotal.toFixed(2));
 
     const descontoPercentual = primeiraCompra ? descontoSolicitado : 0;
-    const descontoValor = Number((subtotal * (descontoPercentual / 100)).toFixed(2));
+    const descontoPrimeiraCompraValor = Number(
+      (subtotal * (descontoPercentual / 100)).toFixed(2)
+    );
+
+    let descontoCashbackValor = 0;
+    let cupomUsado = null;
+
+    if (codigoCashback && String(codigoCashback).trim() !== "") {
+      const codigo = String(codigoCashback).trim().toUpperCase();
+
+      const cashbackResult = await client.query(
+        `
+        SELECT *
+        FROM cupons_cashback
+        WHERE UPPER(codigo) = $1
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [codigo]
+      );
+
+      if (cashbackResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(404).json({ error: "Cupom cashback não encontrado" });
+      }
+
+      const cupom = cashbackResult.rows[0];
+
+      if (cupom.status === "usado") {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(400).json({ error: "Cupom cashback já foi usado" });
+      }
+
+      const agora = new Date();
+      const validoAPartir = new Date(cupom.valido_a_partir_de);
+
+      if (agora < validoAPartir) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(400).json({
+          error: `Cupom cashback só pode ser usado a partir de ${validoAPartir.toLocaleDateString("pt-BR")}`
+        });
+      }
+
+      if (!clienteIdFinal) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(400).json({
+          error: "Selecione um cliente para usar o cashback"
+        });
+      }
+
+      if (Number(cupom.cliente_id) !== Number(clienteIdFinal)) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(400).json({
+          error: "Esse cupom cashback pertence a outro cliente"
+        });
+      }
+
+      descontoCashbackValor = Number(cupom.valor || 0);
+
+      if (descontoCashbackValor > subtotal - descontoPrimeiraCompraValor) {
+        descontoCashbackValor = Number(
+          (subtotal - descontoPrimeiraCompraValor).toFixed(2)
+        );
+      }
+
+      cupomUsado = cupom;
+    }
+
+    const descontoValor = Number(
+      (descontoPrimeiraCompraValor + descontoCashbackValor).toFixed(2)
+    );
+
     const totalFinal = Number((subtotal - descontoValor).toFixed(2));
 
-    const cashback = calcularCashback(totalFinal);
+    const cashbackGerado = calcularCashback(totalFinal);
 
     const pedidoResult = await client.query(
       `
@@ -298,8 +428,8 @@ router.post("/pdv/finalizar", async (req, res) => {
         descontoValor,
         totalFinal,
         primeiraCompra,
-        cashback.percentual,
-        cashback.valor
+        cashbackGerado.percentual,
+        cashbackGerado.valor
       ]
     );
 
@@ -338,15 +468,10 @@ router.post("/pdv/finalizar", async (req, res) => {
         INSERT INTO movimentacoes (produto_id, tipo, quantidade, motivo)
         VALUES ($1, 'saida', $2, $3)
         `,
-        [
-          item.produtoId,
-          item.quantidade,
-          `Venda PDV #${pedido.id}`
-        ]
+        [item.produtoId, item.quantidade, `Venda PDV #${pedido.id}`]
       );
     }
 
-    // 🔥 FINANCEIRO INTEGRADO À VENDA
     await client.query(
       `
       INSERT INTO financeiro (tipo, descricao, valor, categoria)
@@ -358,6 +483,17 @@ router.post("/pdv/finalizar", async (req, res) => {
         `Vendas/${formaPagamento}`
       ]
     );
+
+    if (cupomUsado) {
+      await client.query(
+        `
+        UPDATE cupons_cashback
+        SET status = 'usado', usado_em = NOW()
+        WHERE id = $1
+        `,
+        [cupomUsado.id]
+      );
+    }
 
     let cupomGerado = null;
 
@@ -382,8 +518,8 @@ router.post("/pdv/finalizar", async (req, res) => {
           pedido.id,
           clienteIdFinal,
           codigo,
-          cashback.percentual,
-          cashback.valor,
+          cashbackGerado.percentual,
+          cashbackGerado.valor,
           amanhaIso()
         ]
       );
@@ -420,6 +556,12 @@ router.post("/pdv/finalizar", async (req, res) => {
             percentual: Number(cupomGerado.percentual || 0),
             valor: Number(cupomGerado.valor || 0),
             valido_a_partir_de: cupomGerado.valido_a_partir_de
+          }
+        : null,
+      cashback_usado: cupomUsado
+        ? {
+            codigo: cupomUsado.codigo,
+            valor: Number(cupomUsado.valor || 0)
           }
         : null
     });
