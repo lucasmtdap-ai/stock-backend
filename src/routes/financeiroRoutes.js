@@ -10,25 +10,52 @@ router.get("/", async (req, res) => {
       "SELECT * FROM financeiro ORDER BY id DESC"
     );
 
-    const movimentos = result.rows;
+    const movimentos = result.rows.map((m) => ({
+      ...m,
+      valor: Number(m.valor || 0)
+    }));
 
     let entradas = 0;
     let saidas = 0;
 
     movimentos.forEach((m) => {
       if (m.tipo === "entrada") {
-        entradas += Number(m.valor);
+        entradas += Number(m.valor || 0);
       } else {
-        saidas += Number(m.valor);
+        saidas += Number(m.valor || 0);
       }
+    });
+
+    const entradasPorPagamento = {
+      dinheiro: 0,
+      pix: 0,
+      debito: 0,
+      credito: 0
+    };
+
+    movimentos.forEach((m) => {
+      if (m.tipo !== "entrada") return;
+
+      const categoria = String(m.categoria || "").toLowerCase();
+
+      if (categoria === "vendas/dinheiro") entradasPorPagamento.dinheiro += Number(m.valor || 0);
+      if (categoria === "vendas/pix") entradasPorPagamento.pix += Number(m.valor || 0);
+      if (categoria === "vendas/debito") entradasPorPagamento.debito += Number(m.valor || 0);
+      if (categoria === "vendas/credito") entradasPorPagamento.credito += Number(m.valor || 0);
     });
 
     res.json({
       movimentos,
       resumo: {
-        entradas,
-        saidas,
-        saldo: entradas - saidas
+        entradas: Number(entradas.toFixed(2)),
+        saidas: Number(saidas.toFixed(2)),
+        saldo: Number((entradas - saidas).toFixed(2)),
+        entradasPorPagamento: {
+          dinheiro: Number(entradasPorPagamento.dinheiro.toFixed(2)),
+          pix: Number(entradasPorPagamento.pix.toFixed(2)),
+          debito: Number(entradasPorPagamento.debito.toFixed(2)),
+          credito: Number(entradasPorPagamento.credito.toFixed(2))
+        }
       }
     });
   } catch (err) {
@@ -37,7 +64,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// CADASTRAR MOVIMENTO
+// CADASTRAR MOVIMENTO MANUAL
 router.post("/", async (req, res) => {
   try {
     const { tipo, descricao, valor, categoria } = req.body;
@@ -62,7 +89,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// EXCLUIR
+// EXCLUIR MOVIMENTO
 router.delete("/:id", async (req, res) => {
   try {
     await pool.query("DELETE FROM financeiro WHERE id=$1", [
