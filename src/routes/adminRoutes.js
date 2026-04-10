@@ -1,22 +1,18 @@
 import express from "express";
+import authMiddleware from "../middlewares/authMiddleware.js";
+import adminMiddleware from "../middlewares/adminMiddleware.js";
 import { pool } from "../config/db.js";
 
 const router = express.Router();
 
-// DEFINIR VOCÊ COMO ADMIN
-router.get("/set-admin", async (req, res) => {
-  try {
-    await pool.query(`
-      UPDATE usuarios
-      SET role = 'admin'
-      WHERE email = 'lucasmtdap@gmail.com'
-    `);
+router.get("/usuarios", authMiddleware, adminMiddleware, async (req, res) => {
+  const result = await pool.query(`
+    SELECT id, nome, email, plano, role, status, created_at
+    FROM usuarios
+    ORDER BY id DESC
+  `);
 
-    res.json({ ok: true, message: "Admin ativado" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro ao definir admin" });
-  }
+  res.json(result.rows);
 });
 
 export default router;
