@@ -105,6 +105,10 @@ export async function initDb() {
     );
   `);
 
+  /*
+    VENDAS ANTIGAS
+    Mantemos para não quebrar histórico antigo
+  */
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
@@ -120,6 +124,55 @@ export async function initDb() {
   await pool.query(`
     ALTER TABLE vendas
     ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
+  `);
+
+  /*
+    NOVO PDV
+  */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pedidos (
+      id SERIAL PRIMARY KEY,
+      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'aberto',
+      forma_pagamento TEXT DEFAULT '',
+      subtotal NUMERIC NOT NULL DEFAULT 0,
+      desconto_percentual NUMERIC NOT NULL DEFAULT 0,
+      desconto_valor NUMERIC NOT NULL DEFAULT 0,
+      total_final NUMERIC NOT NULL DEFAULT 0,
+      primeira_compra BOOLEAN NOT NULL DEFAULT false,
+      cashback_percentual NUMERIC NOT NULL DEFAULT 0,
+      cashback_valor NUMERIC NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      finalizado_em TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pedido_itens (
+      id SERIAL PRIMARY KEY,
+      pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+      nome_produto TEXT NOT NULL,
+      quantidade INTEGER NOT NULL DEFAULT 1,
+      valor_unitario NUMERIC NOT NULL DEFAULT 0,
+      valor_total NUMERIC NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cupons_cashback (
+      id SERIAL PRIMARY KEY,
+      pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+      codigo TEXT NOT NULL UNIQUE,
+      percentual NUMERIC NOT NULL DEFAULT 0,
+      valor NUMERIC NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pendente',
+      valido_a_partir_de TIMESTAMP NOT NULL,
+      usado_em TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 
   await pool.query(`
