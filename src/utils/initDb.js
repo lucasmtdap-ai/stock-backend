@@ -16,7 +16,6 @@ export async function initDb() {
     );
   `);
 
-  // Migração de colunas antigas/faltantes
   await pool.query(`
     ALTER TABLE usuarios
     ADD COLUMN IF NOT EXISTS nome TEXT;
@@ -47,7 +46,6 @@ export async function initDb() {
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
-  // Caso a tabela antiga tenha coluna "name", copia para "nome"
   await pool.query(`
     DO $$
     BEGIN
@@ -69,22 +67,34 @@ export async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS categorias (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       descricao TEXT DEFAULT '',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE categorias
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // PRODUTOS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS produtos (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       preco NUMERIC NOT NULL DEFAULT 0,
       custo NUMERIC NOT NULL DEFAULT 0,
       estoque INTEGER NOT NULL DEFAULT 0,
       categoria TEXT DEFAULT 'Sem categoria'
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE produtos
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
   `);
 
   await pool.query(`
@@ -106,6 +116,7 @@ export async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clientes (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       telefone TEXT DEFAULT '',
       email TEXT DEFAULT '',
@@ -113,10 +124,16 @@ export async function initDb() {
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE clientes
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // FORNECEDORES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fornecedores (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       telefone TEXT DEFAULT '',
       email TEXT DEFAULT '',
@@ -125,20 +142,32 @@ export async function initDb() {
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE fornecedores
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // MARCAS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS marcas (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       descricao TEXT DEFAULT '',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE marcas
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // MOVIMENTAÇÕES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS movimentacoes (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
       tipo TEXT NOT NULL,
       quantidade INTEGER NOT NULL,
@@ -147,10 +176,16 @@ export async function initDb() {
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE movimentacoes
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // VENDAS LEGADO
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vendas (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
       cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
       quantidade INTEGER NOT NULL DEFAULT 1,
@@ -162,6 +197,11 @@ export async function initDb() {
 
   await pool.query(`
     ALTER TABLE vendas
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE vendas
     ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
   `);
 
@@ -169,6 +209,7 @@ export async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'aberto',
       forma_pagamento TEXT DEFAULT '',
@@ -184,7 +225,12 @@ export async function initDb() {
     );
   `);
 
-  // ITENS DO PEDIDO
+  await pool.query(`
+    ALTER TABLE pedidos
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
+  // ITENS DOS PEDIDOS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedido_itens (
       id SERIAL PRIMARY KEY,
@@ -218,6 +264,7 @@ export async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS financeiro (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       tipo TEXT NOT NULL,
       descricao TEXT NOT NULL,
       valor NUMERIC NOT NULL DEFAULT 0,
@@ -226,10 +273,16 @@ export async function initDb() {
     );
   `);
 
+  await pool.query(`
+    ALTER TABLE financeiro
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   // CONFIGURAÇÕES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS configuracoes (
       id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
       nome_loja TEXT DEFAULT '',
       telefone TEXT DEFAULT '',
       email TEXT DEFAULT '',
@@ -238,7 +291,11 @@ export async function initDb() {
     );
   `);
 
-  // GARANTE SEU ADMIN
+  await pool.query(`
+    ALTER TABLE configuracoes
+    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+  `);
+
   const adminEmail = "lucasmtdap@gmail.com";
 
   await pool.query(
