@@ -196,13 +196,13 @@ export async function initDb() {
     );
   `);
 
-  const adminEmail = "Lucasmtdap@gmail.com";
+  const adminEmail = "lucasmtdap@gmail.com";
 
   await pool.query(
     `
     UPDATE usuarios
     SET role = 'admin', status = 'ativo'
-    WHERE email = $1
+    WHERE LOWER(email) = LOWER($1)
     `,
     [adminEmail]
   );
