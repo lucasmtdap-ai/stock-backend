@@ -185,27 +185,27 @@ await pool.query(`
 
   // VENDAS LEGADO
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS vendas (
-      id SERIAL PRIMARY KEY,
-      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-      produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
-      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-      quantidade INTEGER NOT NULL DEFAULT 1,
-      valor_unitario NUMERIC NOT NULL DEFAULT 0,
-      valor_total NUMERIC NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
+  CREATE TABLE IF NOT EXISTS vendas (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+    produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+    cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+    quantidade INTEGER NOT NULL DEFAULT 1,
+    valor_unitario NUMERIC NOT NULL DEFAULT 0,
+    valor_total NUMERIC NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`);
 
   await pool.query(`
-    ALTER TABLE vendas
-    ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
-  `);
+  ALTER TABLE vendas
+  ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+`);
 
-  await pool.query(`
-    ALTER TABLE vendas
-    ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
-  `);
+await pool.query(`
+  ALTER TABLE vendas
+  ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL;
+`);
 
   // PEDIDOS
   await pool.query(`
