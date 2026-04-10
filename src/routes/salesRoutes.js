@@ -58,6 +58,7 @@ router.get("/", async (req, res) => {
       FROM (
         SELECT
           ('pedido-' || ped.id || '-' || pi.id) AS id,
+          ped.id AS pedido_id,
           pi.produto_id,
           ped.cliente_id,
           pi.nome_produto AS produto_nome,
@@ -80,6 +81,7 @@ router.get("/", async (req, res) => {
 
         SELECT
           ('legacy-' || v.id) AS id,
+          NULL AS pedido_id,
           v.produto_id,
           v.cliente_id,
           p.nome AS produto_nome,
@@ -344,14 +346,16 @@ router.post("/pdv/finalizar", async (req, res) => {
       );
     }
 
+    // 🔥 FINANCEIRO INTEGRADO À VENDA
     await client.query(
       `
       INSERT INTO financeiro (tipo, descricao, valor, categoria)
-      VALUES ('entrada', $1, $2, 'Vendas')
+      VALUES ('entrada', $1, $2, $3)
       `,
       [
         `Venda PDV #${pedido.id} - ${formaPagamento}`,
-        totalFinal
+        totalFinal,
+        `Vendas/${formaPagamento}`
       ]
     );
 
